@@ -1,24 +1,24 @@
-"""Chronological Timeline and Graphical Gantt view page for GoalOS."""
+"""Clean Chronological Agenda and Graphical Gantt view page for GoalOS."""
 
 import tkinter as tk
 from typing import Dict, List
 
 from ui.app_controller import AppController
 from ui.components.canvas_widgets import GanttTimelineCanvas
-from ui.components.dialogs import RescheduleDialog, TaskFormDialog
+from ui.components.dialogs import RescheduleDialog
 from ui.components.scrollable import ScrollableFrame
 from utils.dates import format_relative_deadline
 
 
 class TimelinePage(tk.Frame):
-    """Displays chronological deadline buckets and a graphical Canvas Gantt view."""
+    """Displays either a clean Chronological Agenda or a full-width Graphical Gantt Chart."""
 
     def __init__(self, parent: tk.Widget, controller: AppController) -> None:
         self.controller = controller
         p = controller.colors
         super().__init__(parent, bg=p["bg"])
 
-        self.view_mode = tk.StringVar(value="split")  # 'list', 'gantt', 'split'
+        self.view_mode = tk.StringVar(value="list")  # 'list' or 'gantt'
         self.scroll = ScrollableFrame(self, bg=p["bg"])
         self.scroll.pack(fill="both", expand=True)
         self.render()
@@ -37,37 +37,25 @@ class TimelinePage(tk.Frame):
             child.destroy()
 
         # Header
-        header = tk.Frame(container, bg=p["bg"], padx=26, pady=18)
+        header = tk.Frame(container, bg=p["bg"], padx=32, pady=20)
         header.pack(fill="x")
 
-        left_h = tk.Frame(header, bg=p["bg"])
-        left_h.pack(side="left")
         tk.Label(
-            left_h,
-            text="Timeline & Deadline Horizon",
+            header,
+            text="Timeline & Deadlines",
             bg=p["bg"],
             fg=p["text"],
             font=("Segoe UI", 18, "bold"),
             anchor="w",
-        ).pack(anchor="w")
-        tk.Label(
-            left_h,
-            text="Visualize upcoming milestones, task deadlines, overdue items, and Gantt schedules.",
-            bg=p["bg"],
-            fg=p["text_muted"],
-            font=("Segoe UI", 10),
-            anchor="w",
-        ).pack(anchor="w")
+        ).pack(side="left")
 
-        # Mode Switcher Buttons
         mode_bar = tk.Frame(header, bg=p["surface"], padx=4, pady=4)
         mode_bar.pack(side="right")
 
         cur_mode = self.view_mode.get()
         for key, lbl in [
-            ("split", "Split (Gantt + Buckets)"),
-            ("list", "Chronological List"),
-            ("gantt", "Graphical Gantt Chart"),
+            ("list", "☰ Chronological Agenda"),
+            ("gantt", "◷ Graphical Gantt Chart"),
         ]:
             is_sel = cur_mode == key
             tk.Button(
@@ -77,87 +65,77 @@ class TimelinePage(tk.Frame):
                 fg="#FFFFFF" if is_sel else p["text_muted"],
                 font=("Segoe UI", 9, "bold" if is_sel else "normal"),
                 relief="flat",
-                padx=12,
+                padx=14,
                 pady=5,
                 cursor="hand2",
                 command=lambda k=key: self._set_mode(k),
             ).pack(side="left", padx=2)
 
-        buckets = self.controller.analytics_service.get_timeline_buckets()
-
-        # Check for active goals with deadlines but zero tasks
-        active_goals = self.controller.goal_repo.list_all(status="active")
-        unplanned_goals = [
-            g
-            for g in active_goals
-            if g.deadline
-            and not self.controller.task_repo.list_by_goal(g.id)
-        ]
-
-        if unplanned_goals:
-            warn_box = tk.Frame(
-                container,
-                bg=p["warning_bg"],
-                highlightbackground=p["warning"],
-                highlightthickness=1,
-                padx=16,
-                pady=10,
-            )
-            warn_box.pack(fill="x", padx=26, pady=(0, 14))
-            g_names = ", ".join(f"'{g.title}'" for g in unplanned_goals)
-            tk.Label(
-                warn_box,
-                text=f"⚠ Planning Warning: Goal(s) {g_names} have a target deadline but no planned tasks yet.",
-                bg=p["warning_bg"],
-                fg=p["warning"],
-                font=("Segoe UI", 9, "bold"),
-                anchor="w",
-            ).pack(fill="x")
-
-        # --- Graphical Gantt View (if mode is 'gantt' or 'split') ---
-        if cur_mode in ("gantt", "split"):
+        if cur_mode == "gantt":
             gantt_card = tk.Frame(
                 container,
                 bg=p["surface"],
                 highlightbackground=p["border"],
                 highlightthickness=1,
-                padx=16,
-                pady=14,
+                padx=20,
+                pady=18,
             )
-            gantt_card.pack(fill="x", padx=26, pady=(0, 18))
+            gantt_card.pack(fill="both", expand=True, padx=32, pady=(0, 28))
 
             tk.Label(
                 gantt_card,
-                text="GRAPHICAL GANTT SCHEDULE (PAST 7 DAYS → NEXT 28 DAYS)",
+                text="35-DAY SCHEDULE HORIZON (MILESTONES & TASKS)",
                 bg=p["surface"],
                 fg=p["accent"],
                 font=("Segoe UI", 9, "bold"),
                 anchor="w",
-            ).pack(fill="x", pady=(0, 8))
+            ).pack(fill="x", pady=(0, 12))
 
             gantt_rows = self._collect_gantt_rows()
-            gantt_h = max(240, min(480, 60 + len(gantt_rows) * 34))
+            gantt_h = max(360, min(600, 70 + len(gantt_rows) * 36))
             gantt = GanttTimelineCanvas(
                 gantt_card, colors=p, height=gantt_h
             )
-            gantt.pack(fill="x")
+            gantt.pack(fill="both", expand=True)
             gantt.set_items(gantt_rows)
+            return
 
-        # --- Chronological Grouped Buckets (if mode is 'list' or 'split') ---
-        if cur_mode in ("list", "split"):
-            bucket_defs = [
-                ("overdue", "🚨 Overdue Work", p["danger"]),
-                ("today", "⚡ Due or Scheduled Today", p["warning"]),
-                ("next_7_days", "📅 Next 7 Days", p["info"]),
-                ("later", "🔭 Later Horizon", p["accent"]),
-                ("unscheduled", "◌ Unscheduled (No Date Set)", p["text_muted"]),
-            ]
+        # Chronological Agenda View
+        buckets = self.controller.analytics_service.get_timeline_buckets()
+        bucket_defs = [
+            ("overdue", "Overdue", p["danger"]),
+            ("today", "Due Today", p["warning"]),
+            ("next_7_days", "Next 7 Days", p["info"]),
+            ("later", "Later", p["accent"]),
+            ("unscheduled", "Unscheduled", p["text_muted"]),
+        ]
 
-            for b_key, b_title, b_color in bucket_defs:
-                items = buckets.get(b_key, [])
+        any_rendered = False
+        for b_key, b_title, b_color in bucket_defs:
+            items = buckets.get(b_key, [])
+            if items:
+                any_rendered = True
                 self._build_bucket_section(
                     container, b_title, items, b_color
                 )
+
+        if not any_rendered:
+            empty = tk.Frame(
+                container,
+                bg=p["surface"],
+                highlightbackground=p["border"],
+                highlightthickness=1,
+                padx=24,
+                pady=36,
+            )
+            empty.pack(fill="x", padx=32)
+            tk.Label(
+                empty,
+                text="No upcoming milestones or tasks on your timeline.",
+                bg=p["surface"],
+                fg=p["text"],
+                font=("Segoe UI", 11, "bold"),
+            ).pack()
 
     def _collect_gantt_rows(self) -> List[Dict]:
         rows: List[Dict] = []
@@ -192,7 +170,7 @@ class TimelinePage(tk.Frame):
                         "color": t.goal_color or self.controller.colors["info"],
                     }
                 )
-        return rows[:16]
+        return rows[:18]
 
     def _build_bucket_section(
         self,
@@ -207,10 +185,10 @@ class TimelinePage(tk.Frame):
             bg=p["surface"],
             highlightbackground=p["border"],
             highlightthickness=1,
-            padx=18,
-            pady=12,
+            padx=20,
+            pady=14,
         )
-        sec.pack(fill="x", padx=26, pady=(0, 14))
+        sec.pack(fill="x", padx=32, pady=(0, 14))
 
         head = tk.Frame(sec, bg=p["surface"])
         head.pack(fill="x", pady=(0, 8))
@@ -222,45 +200,39 @@ class TimelinePage(tk.Frame):
             font=("Segoe UI", 11, "bold"),
         ).pack(side="left")
 
-        if not items:
-            tk.Label(
-                sec,
-                text="No items in this time window.",
-                bg=p["surface"],
-                fg=p["text_muted"],
-                font=("Segoe UI", 9),
-            ).pack(anchor="w")
-            return
-
         for item in items:
-            row = tk.Frame(sec, bg=p["surface_alt"], padx=12, pady=7)
-            row.pack(fill="x", pady=2)
+            row = tk.Frame(sec, bg=p["surface_alt"], padx=14, pady=8)
+            row.pack(fill="x", pady=3)
 
             etype = item["entity_type"]
-            badge_col = p["info"] if etype == "Milestone" else (item["goal_color"] or p["accent"])
+            badge_col = (
+                p["info"]
+                if etype == "Milestone"
+                else (item["goal_color"] or p["accent"])
+            )
 
             tk.Label(
                 row,
-                text=f" {etype.upper()} ",
+                text=etype.upper(),
                 bg=p["surface"],
                 fg=badge_col,
                 font=("Segoe UI", 7, "bold"),
-                padx=5,
+                padx=6,
                 pady=1,
-            ).pack(side="left", padx=(0, 8))
+            ).pack(side="left", padx=(0, 10))
 
             tk.Label(
                 row,
                 text=item["title"],
                 bg=p["surface_alt"],
                 fg=p["text"],
-                font=("Segoe UI", 9, "bold"),
+                font=("Segoe UI", 10, "bold"),
                 anchor="w",
             ).pack(side="left")
 
             tk.Label(
                 row,
-                text=f"   •   Goal: {item['goal_title']}",
+                text=f"   •   {item['goal_title']}",
                 bg=p["surface_alt"],
                 fg=p["text_muted"],
                 font=("Segoe UI", 8),
@@ -283,22 +255,24 @@ class TimelinePage(tk.Frame):
                 t_obj = item["raw"]
                 tk.Button(
                     right,
-                    text="✓ Complete",
+                    text="✓ Done",
                     bg=p["positive"],
                     fg="#FFFFFF",
                     font=("Segoe UI", 8, "bold"),
                     relief="flat",
-                    padx=8,
+                    padx=10,
                     pady=2,
                     cursor="hand2",
-                    command=lambda tid=t_obj.id: self.controller.toggle_task_completion(tid),
+                    command=lambda tid=t_obj.id: self.controller.toggle_task_completion(
+                        tid
+                    ),
                 ).pack(side="left", padx=3)
 
                 tk.Button(
                     right,
                     text="Reschedule",
                     bg=p["surface"],
-                    fg=p["text"],
+                    fg=p["text_muted"],
                     font=("Segoe UI", 8),
                     relief="flat",
                     padx=8,
@@ -319,5 +293,7 @@ class TimelinePage(tk.Frame):
                     padx=8,
                     pady=2,
                     cursor="hand2",
-                    command=lambda gid=item["goal_id"]: self.controller.open_goal_detail(gid),
+                    command=lambda gid=item["goal_id"]: self.controller.open_goal_detail(
+                        gid
+                    ),
                 ).pack(side="left", padx=3)

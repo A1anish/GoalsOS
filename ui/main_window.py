@@ -92,7 +92,7 @@ class MainWindow(tk.Tk):
             bg=p["surface"],
             highlightbackground=p["border"],
             highlightthickness=1,
-            padx=24,
+            padx=32,
             pady=10,
         )
         self.top_bar.pack(fill="x", side="top")
@@ -101,8 +101,8 @@ class MainWindow(tk.Tk):
             self.top_bar,
             text="Dashboard",
             bg=p["surface"],
-            fg=p["text"],
-            font=("Segoe UI", 11, "bold"),
+            fg=p["text_muted"],
+            font=("Segoe UI", 10, "bold"),
         )
         self.breadcrumb_lbl.pack(side="left")
 
@@ -110,7 +110,15 @@ class MainWindow(tk.Tk):
         top_actions = tk.Frame(self.top_bar, bg=p["surface"])
         top_actions.pack(side="right")
 
-        # Quick Global Task Search
+        # Quick Global Task Search (press Enter)
+        tk.Label(
+            top_actions,
+            text="⌕",
+            bg=p["surface"],
+            fg=p["text_muted"],
+            font=("Segoe UI", 10),
+        ).pack(side="left", padx=(0, 4))
+
         self.search_entry = tk.Entry(
             top_actions,
             textvariable=self.global_search_var,
@@ -121,36 +129,23 @@ class MainWindow(tk.Tk):
             highlightcolor=p["accent"],
             highlightthickness=1,
             relief="flat",
-            width=24,
+            width=22,
             font=("Segoe UI", 9),
         )
-        self.search_entry.pack(side="left", ipady=4, padx=(0, 6))
+        self.search_entry.pack(side="left", ipady=4, padx=(0, 14))
         self.search_entry.bind("<Return>", self._on_global_search)
 
-        tk.Button(
-            top_actions,
-            text="Search Tasks",
-            bg=p["surface_alt"],
-            fg=p["text_muted"],
-            font=("Segoe UI", 8, "bold"),
-            relief="flat",
-            padx=10,
-            pady=4,
-            cursor="hand2",
-            command=self._on_global_search,
-        ).pack(side="left", padx=(0, 14))
-
         # Quick Theme Switcher button
-        theme_icon = "☀ Light" if self.controller.theme.mode == "dark" else "🌙 Dark"
+        theme_icon = "☀" if self.controller.theme.mode == "dark" else "🌙"
         self.theme_btn = tk.Button(
             top_actions,
             text=theme_icon,
             bg=p["surface_alt"],
             fg=p["text"],
-            font=("Segoe UI", 8, "bold"),
+            font=("Segoe UI", 10),
             relief="flat",
             padx=10,
-            pady=4,
+            pady=3,
             cursor="hand2",
             command=self._toggle_theme_quick,
         )
@@ -158,7 +153,7 @@ class MainWindow(tk.Tk):
 
         tk.Button(
             top_actions,
-            text="+ New Task",
+            text="+ Task",
             bg=p["surface_alt"],
             fg=p["text"],
             font=("Segoe UI", 9, "bold"),

@@ -1,4 +1,4 @@
-"""Unified Task Planner page with filtering, sorting, and quick actions."""
+"""Streamlined Task Planner page with 1-click filter pills, inline quick-add, and clean rows."""
 
 import tkinter as tk
 from tkinter import messagebox, ttk
@@ -8,11 +8,13 @@ from models.entities import Task
 from ui.app_controller import AppController
 from ui.components.dialogs import RescheduleDialog, TaskFormDialog
 from ui.components.scrollable import ScrollableFrame
-from utils.dates import format_duration, format_relative_deadline
+from utils.dates import format_duration, format_relative_deadline, today_iso
 
 
 class TaskPlannerPage(tk.Frame):
-    """Unified task execution and scheduling view across all active goals."""
+    """Unified task execution and scheduling view with fast 1-click filter pills
+    and an inline quick-add task bar.
+    """
 
     def __init__(self, parent: tk.Widget, controller: AppController) -> None:
         self.controller = controller
@@ -22,10 +24,8 @@ class TaskPlannerPage(tk.Frame):
         default_sort = controller.settings_repo.get(
             "default_task_sort", "due_date"
         )
-        self.status_var = tk.StringVar(value="active_only")
-        self.priority_var = tk.StringVar(value="all")
+        self.quick_tab = tk.StringVar(value="active")  # 'active', 'today', 'overdue', 'upcoming', 'completed'
         self.goal_var = tk.StringVar(value="All Goals")
-        self.due_var = tk.StringVar(value="all")
         self.sort_var = tk.StringVar(value=default_sort)
         self.search_var = tk.StringVar(value="")
 
@@ -37,11 +37,16 @@ class TaskPlannerPage(tk.Frame):
     def apply_initial_filters(self) -> None:
         init = self.controller.planner_initial_filter
         if init:
-            if "due" in init:
-                self.due_var.set(init["due"])
-            if "status" in init:
-                self.status_var.set(init["status"])
+            due = init.get("due")
+            if due in ("today", "overdue"):
+                self.quick_tab.set(due)
+            elif init.get("status") == "all":
+                self.quick_tab.set("active")
             self.controller.planner_initial_filter = {}
+
+    def _set_quick_tab(self, tab_key: str) -> None:
+        self.quick_tab.set(tab_key)
+        self.render()
 
     def render(self) -> None:
         self.apply_initial_filters()
@@ -53,176 +58,155 @@ class TaskPlannerPage(tk.Frame):
         for child in container.winfo_children():
             child.destroy()
 
-        # Header
-        header = tk.Frame(container, bg=p["bg"], padx=26, pady=18)
+        # --- Clean Header ---
+        header = tk.Frame(container, bg=p["bg"], padx=32, pady=20)
         header.pack(fill="x")
 
-        left_h = tk.Frame(header, bg=p["bg"])
-        left_h.pack(side="left")
         tk.Label(
-            left_h,
-            text="Task Planner & Execution Queue",
+            header,
+            text="Task Planner",
             bg=p["bg"],
             fg=p["text"],
             font=("Segoe UI", 18, "bold"),
             anchor="w",
-        ).pack(anchor="w")
-        tk.Label(
-            left_h,
-            text="Filter, prioritize, schedule, and execute actionable tasks across all active goals.",
-            bg=p["bg"],
-            fg=p["text_muted"],
-            font=("Segoe UI", 10),
-            anchor="w",
-        ).pack(anchor="w")
+        ).pack(side="left")
 
-        tk.Button(
-            header,
-            text="+ New Task",
-            bg=p["accent"],
-            fg="#FFFFFF",
-            font=("Segoe UI", 9, "bold"),
-            relief="flat",
-            padx=16,
-            pady=8,
-            cursor="hand2",
-            command=lambda: TaskFormDialog(self, self.controller),
-        ).pack(side="right")
+        # --- Inline Quick-Add Bar ---
+        projects = self.controller.goal_service.list_all_projects_with_context()
+        if projects:
+            quick_card = tk.Frame(
+                container,
+                bg=p["surface"],
+                highlightbackground=p["border"],
+                highlightthickness=1,
+                padx=16,
+                pady=12,
+            )
+            quick_card.pack(fill="x", padx=32, pady=(0, 16))
 
-        # Filter & Sort Toolbar
-        f_panel = tk.Frame(
-            container,
-            bg=p["surface"],
-            highlightbackground=p["border"],
-            highlightthickness=1,
-            padx=16,
-            pady=12,
-        )
-        f_panel.pack(fill="x", padx=26, pady=(0, 16))
+            q_ent = tk.Entry(
+                quick_card,
+                bg=p["input_bg"],
+                fg=p["text"],
+                insertbackground=p["text"],
+                highlightbackground=p["border"],
+                highlightthickness=1,
+                relief="flat",
+                font=("Segoe UI", 10),
+            )
+            q_ent.pack(side="left", fill="x", expand=True, ipady=5, padx=(0, 10))
 
-        row1 = tk.Frame(f_panel, bg=p["surface"])
-        row1.pack(fill="x")
+            proj_cb = ttk.Combobox(
+                quick_card,
+                values=[lbl for _, lbl in projects],
+                state="readonly",
+                width=32,
+                font=("Segoe UI", 9),
+            )
+            proj_cb.current(0)
+            proj_cb.pack(side="left", padx=(0, 10))
 
-        # Status filter
-        self._add_dropdown(
-            row1,
-            "Status:",
-            self.status_var,
-            [
-                "active_only",
-                "all",
-                "todo",
-                "in_progress",
-                "completed",
-                "cancelled",
-            ],
-            width=13,
-        )
+            def _inline_add(_e=None) -> None:
+                title = q_ent.get().strip()
+                if not title:
+                    TaskFormDialog(self, self.controller)
+                    return
+                idx = proj_cb.current()
+                pid = projects[idx][0] if idx >= 0 else projects[0][0]
+                self.controller.task_service.create_task(
+                    project_id=pid,
+                    title=title,
+                    due_date=today_iso(),
+                    scheduled_date=today_iso(),
+                )
+                self.controller.show_toast(f"Added task '{title}'", "positive")
+                self.controller.notify_data_changed("inline_task_added")
 
-        # Due window filter
-        self._add_dropdown(
-            row1,
-            "Due Window:",
-            self.due_var,
-            ["all", "overdue", "today", "next_7_days", "unscheduled"],
-            width=13,
-        )
+            q_ent.bind("<Return>", _inline_add)
 
-        # Priority filter
-        self._add_dropdown(
-            row1,
-            "Priority:",
-            self.priority_var,
-            ["all", "high", "medium", "low"],
-            width=10,
-        )
+            tk.Button(
+                quick_card,
+                text="+ Quick Add",
+                bg=p["accent"],
+                fg="#FFFFFF",
+                font=("Segoe UI", 9, "bold"),
+                relief="flat",
+                padx=14,
+                pady=5,
+                cursor="hand2",
+                command=_inline_add,
+            ).pack(side="right")
 
-        # Goal filter
+        # --- Streamlined 1-Row Filter Bar (Pills on Left, Goal & Sort on Right) ---
+        filter_bar = tk.Frame(container, bg=p["bg"], padx=32)
+        filter_bar.pack(fill="x", pady=(0, 14))
+
+        cur_tab = self.quick_tab.get()
+        for key, lbl in [
+            ("active", "All Active"),
+            ("today", "Due Today"),
+            ("overdue", "Overdue"),
+            ("upcoming", "Next 7 Days"),
+            ("completed", "Completed"),
+        ]:
+            is_sel = cur_tab == key
+            tk.Button(
+                filter_bar,
+                text=lbl,
+                bg=p["accent"] if is_sel else p["surface"],
+                fg="#FFFFFF" if is_sel else p["text_muted"],
+                font=("Segoe UI", 9, "bold" if is_sel else "normal"),
+                relief="flat",
+                padx=12,
+                pady=5,
+                cursor="hand2",
+                command=lambda k=key: self._set_quick_tab(k),
+            ).pack(side="left", padx=(0, 6))
+
+        right_f = tk.Frame(filter_bar, bg=p["bg"])
+        right_f.pack(side="right")
+
         goals = [
             g
             for g in self.controller.goal_repo.list_all()
             if g.status != "archived"
         ]
         self._goal_map = [("all", "All Goals")] + [
-            (g.id, g.title[:28]) for g in goals
+            (g.id, g.title[:26]) for g in goals
         ]
-        self._add_dropdown(
-            row1,
-            "Goal:",
-            self.goal_var,
-            [lbl for _, lbl in self._goal_map],
-            width=22,
-        )
 
-        # Sort by
-        self._add_dropdown(
-            row1,
-            "Sort By:",
-            self.sort_var,
-            [
-                "due_date",
-                "priority",
-                "estimated_minutes",
-                "status",
-                "created_at",
-            ],
-            width=15,
-        )
-
-        # Search input + Reset button on row 2
-        row2 = tk.Frame(f_panel, bg=p["surface"], pady=6)
-        row2.pack(fill="x")
-
-        tk.Label(
-            row2,
-            text="Search Tasks:",
-            bg=p["surface"],
-            fg=p["text_muted"],
-            font=("Segoe UI", 9, "bold"),
-        ).pack(side="left", padx=(0, 8))
-
-        s_ent = tk.Entry(
-            row2,
-            textvariable=self.search_var,
-            bg=p["input_bg"],
-            fg=p["text"],
-            insertbackground=p["text"],
-            highlightbackground=p["border"],
-            highlightthickness=1,
-            relief="flat",
-            width=36,
+        goal_cb = ttk.Combobox(
+            right_f,
+            textvariable=self.goal_var,
+            values=[lbl for _, lbl in self._goal_map],
+            state="readonly",
+            width=20,
             font=("Segoe UI", 9),
         )
-        s_ent.pack(side="left", ipady=4, padx=(0, 8))
-        s_ent.bind("<Return>", lambda _e: self.render())
+        goal_cb.pack(side="left", padx=(0, 8))
+        goal_cb.bind("<<ComboboxSelected>>", lambda _e: self.render())
 
-        tk.Button(
-            row2,
-            text="Apply Search",
-            bg=p["accent"],
-            fg="#FFFFFF",
-            font=("Segoe UI", 8, "bold"),
-            relief="flat",
-            padx=10,
-            pady=4,
-            cursor="hand2",
-            command=self.render,
-        ).pack(side="left", padx=(0, 8))
+        sort_cb = ttk.Combobox(
+            right_f,
+            textvariable=self.sort_var,
+            values=["due_date", "priority", "estimated_minutes", "created_at"],
+            state="readonly",
+            width=14,
+            font=("Segoe UI", 9),
+        )
+        sort_cb.pack(side="left")
+        sort_cb.bind("<<ComboboxSelected>>", lambda _e: self.render())
 
-        tk.Button(
-            row2,
-            text="Reset Filters",
-            bg=p["surface_alt"],
-            fg=p["text_muted"],
-            font=("Segoe UI", 8),
-            relief="flat",
-            padx=10,
-            pady=4,
-            cursor="hand2",
-            command=self._reset_filters,
-        ).pack(side="left")
+        # Map quick_tab to TaskService filter parameters
+        status_filter = "completed" if cur_tab == "completed" else "active_only"
+        due_filter = "all"
+        if cur_tab == "today":
+            due_filter = "today"
+        elif cur_tab == "overdue":
+            due_filter = "overdue"
+        elif cur_tab == "upcoming":
+            due_filter = "next_7_days"
 
-        # Determine selected goal ID
         sel_goal_label = self.goal_var.get()
         goal_id_filter = next(
             (gid for gid, lbl in self._goal_map if lbl == sel_goal_label),
@@ -230,30 +214,17 @@ class TaskPlannerPage(tk.Frame):
         )
 
         tasks = self.controller.task_service.filter_and_sort_tasks(
-            status_filter=self.status_var.get(),
-            priority_filter=self.priority_var.get(),
+            status_filter=status_filter,
+            priority_filter="all",
             goal_id_filter=goal_id_filter,
-            due_filter=self.due_var.get(),
+            due_filter=due_filter,
             search_query=self.search_var.get(),
             sort_by=self.sort_var.get(),
         )
 
-        total_est = sum(
-            (t.estimated_minutes or 30)
-            for t in tasks
-            if t.status not in ("completed", "cancelled")
-        )
-        tk.Label(
-            row2,
-            text=f"Showing {len(tasks)} task(s)   •   Active Est. Workload: {format_duration(total_est)}",
-            bg=p["surface"],
-            fg=p["text_muted"],
-            font=("Segoe UI", 9, "bold"),
-        ).pack(side="right")
-
-        # Task Table / List
-        list_frame = tk.Frame(container, bg=p["bg"], padx=26)
-        list_frame.pack(fill="both", expand=True, pady=(0, 26))
+        # --- Task List ---
+        list_frame = tk.Frame(container, bg=p["bg"], padx=32)
+        list_frame.pack(fill="both", expand=True, pady=(0, 28))
 
         if not tasks:
             empty = tk.Frame(
@@ -267,58 +238,15 @@ class TaskPlannerPage(tk.Frame):
             empty.pack(fill="x")
             tk.Label(
                 empty,
-                text="No tasks match your current filters.",
+                text="No tasks in this view.",
                 bg=p["surface"],
                 fg=p["text"],
                 font=("Segoe UI", 11, "bold"),
-            ).pack()
-            tk.Label(
-                empty,
-                text="Try resetting filters or click '+ New Task' to schedule actionable work.",
-                bg=p["surface"],
-                fg=p["text_muted"],
-                font=("Segoe UI", 9),
-                pady=6,
             ).pack()
             return
 
         for t in tasks:
             self._build_planner_task_row(list_frame, t)
-
-    def _add_dropdown(
-        self,
-        parent: tk.Widget,
-        label: str,
-        var: tk.StringVar,
-        values: list,
-        width: int = 12,
-    ) -> None:
-        p = self.controller.colors
-        tk.Label(
-            parent,
-            text=label,
-            bg=p["surface"],
-            fg=p["text_muted"],
-            font=("Segoe UI", 8, "bold"),
-        ).pack(side="left", padx=(0, 4))
-        cb = ttk.Combobox(
-            parent,
-            textvariable=var,
-            values=values,
-            state="readonly",
-            width=width,
-            font=("Segoe UI", 9),
-        )
-        cb.pack(side="left", padx=(0, 12))
-        cb.bind("<<ComboboxSelected>>", lambda _e: self.render())
-
-    def _reset_filters(self) -> None:
-        self.status_var.set("active_only")
-        self.priority_var.set("all")
-        self.goal_var.set("All Goals")
-        self.due_var.set("all")
-        self.search_var.set("")
-        self.render()
 
     def _build_planner_task_row(self, parent: tk.Widget, t: Task) -> None:
         p = self.controller.colors
@@ -330,16 +258,14 @@ class TaskPlannerPage(tk.Frame):
             bg=p["surface"],
             highlightbackground=p["border"],
             highlightthickness=1,
-            padx=14,
-            pady=10,
+            padx=16,
+            pady=11,
         )
         card.pack(fill="x", pady=(0, 8))
 
-        # Left color bar matching parent Goal
-        bar = tk.Frame(card, bg=t.goal_color or p["accent"], width=4, height=38)
-        bar.pack(side="left", fill="y", padx=(0, 10))
+        bar = tk.Frame(card, bg=t.goal_color or p["accent"], width=4, height=34)
+        bar.pack(side="left", fill="y", padx=(0, 12))
 
-        # Checkbox
         chk = tk.Button(
             card,
             text="☑" if is_comp else ("☒" if is_canc else "☐"),
@@ -355,15 +281,11 @@ class TaskPlannerPage(tk.Frame):
         )
         chk.pack(side="left", padx=(0, 10))
 
-        # Main Text Column
         main_col = tk.Frame(card, bg=p["surface"])
         main_col.pack(side="left", fill="x", expand=True)
 
-        title_row = tk.Frame(main_col, bg=p["surface"])
-        title_row.pack(fill="x")
-
-        tk.Label(
-            title_row,
+        title_lbl = tk.Label(
+            main_col,
             text=t.title,
             bg=p["surface"],
             fg=p["text_muted"] if (is_comp or is_canc) else p["text"],
@@ -373,46 +295,30 @@ class TaskPlannerPage(tk.Frame):
                 "overstrike" if (is_comp or is_canc) else "bold",
             ),
             anchor="w",
-        ).pack(side="left")
-
-        if t.status == "in_progress":
-            tk.Label(
-                title_row,
-                text=" IN PROGRESS ",
-                bg=p["info_bg"],
-                fg=p["info"],
-                font=("Segoe UI", 7, "bold"),
-                padx=5,
-                pady=1,
-            ).pack(side="left", padx=8)
-
-        sub_row = tk.Frame(main_col, bg=p["surface"])
-        sub_row.pack(fill="x", pady=(2, 0))
-
-        goal_link = tk.Label(
-            sub_row,
-            text=f"◎ {t.goal_title}  ›  ▣ {t.project_title}",
-            bg=p["surface"],
-            fg=t.goal_color or p["accent"],
-            font=("Segoe UI", 8, "bold"),
             cursor="hand2",
         )
-        goal_link.pack(side="left")
+        title_lbl.pack(fill="x")
+        title_lbl.bind(
+            "<Button-1>",
+            lambda _e, tid=t.id: self.controller.toggle_task_completion(tid),
+        )
+
+        goal_link = tk.Label(
+            main_col,
+            text=f"{t.goal_title}  ›  {t.project_title}   •   {format_duration(t.estimated_minutes)}",
+            bg=p["surface"],
+            fg=p["text_muted"],
+            font=("Segoe UI", 8),
+            anchor="w",
+            cursor="hand2",
+        )
+        goal_link.pack(fill="x", pady=(2, 0))
         goal_link.bind(
             "<Button-1>",
             lambda _e, gid=t.goal_id: self.controller.open_goal_detail(gid),
         )
 
-        if t.scheduled_date:
-            tk.Label(
-                sub_row,
-                text=f"   •   Scheduled: {t.scheduled_date}",
-                bg=p["surface"],
-                fg=p["text_muted"],
-                font=("Segoe UI", 8),
-            ).pack(side="left")
-
-        # Right side metadata & quick actions
+        # Clean Right Metadata: Due Badge + Priority Badge + Context Menu
         right_col = tk.Frame(card, bg=p["surface"])
         right_col.pack(side="right")
 
@@ -427,17 +333,7 @@ class TaskPlannerPage(tk.Frame):
             bg=p["surface_alt"],
             fg=dl_col,
             font=("Segoe UI", 8, "bold"),
-            padx=8,
-            pady=3,
-        ).pack(side="left", padx=4)
-
-        tk.Label(
-            right_col,
-            text=format_duration(t.estimated_minutes),
-            bg=p["surface_alt"],
-            fg=p["text_muted"],
-            font=("Segoe UI", 8),
-            padx=7,
+            padx=10,
             pady=3,
         ).pack(side="left", padx=4)
 
@@ -459,48 +355,44 @@ class TaskPlannerPage(tk.Frame):
             command=lambda tid=t.id: self._cycle_priority(tid),
         ).pack(side="left", padx=4)
 
-        tk.Button(
+        menu_btn = tk.Button(
             right_col,
-            text="Reschedule",
+            text="•••",
             bg=p["surface_alt"],
-            fg=p["text"],
-            font=("Segoe UI", 8),
-            relief="flat",
-            padx=8,
-            pady=2,
-            cursor="hand2",
-            command=lambda task_obj=t: RescheduleDialog(
-                self, self.controller, task=task_obj
-            ),
-        ).pack(side="left", padx=3)
-
-        tk.Button(
-            right_col,
-            text="Edit",
-            bg=p["surface_alt"],
-            fg=p["text"],
-            font=("Segoe UI", 8),
-            relief="flat",
-            padx=8,
-            pady=2,
-            cursor="hand2",
-            command=lambda task_obj=t: TaskFormDialog(
-                self, self.controller, task=task_obj
-            ),
-        ).pack(side="left", padx=3)
-
-        tk.Button(
-            right_col,
-            text="✕",
-            bg=p["surface_alt"],
-            fg=p["danger"],
+            fg=p["text_muted"],
             font=("Segoe UI", 8, "bold"),
             relief="flat",
-            padx=6,
+            padx=8,
             pady=2,
             cursor="hand2",
-            command=lambda task_obj=t: self._delete_task(task_obj),
-        ).pack(side="left", padx=(3, 0))
+        )
+        menu_btn.pack(side="left", padx=(4, 0))
+        menu_btn.bind(
+            "<Button-1>", lambda e, task_o=t: self._show_task_menu(e, task_o)
+        )
+
+    def _show_task_menu(self, event: tk.Event, t: Task) -> None:
+        p = self.controller.colors
+        menu = tk.Menu(self, tearoff=0, bg=p["surface"], fg=p["text"])
+        menu.add_command(
+            label="Reschedule Dates…",
+            command=lambda: RescheduleDialog(self, self.controller, task=t),
+        )
+        menu.add_command(
+            label="Edit Task Details…",
+            command=lambda: TaskFormDialog(self, self.controller, task=t),
+        )
+        menu.add_command(
+            label="Open Parent Goal",
+            command=lambda: self.controller.open_goal_detail(t.goal_id),
+        )
+        menu.add_separator()
+        menu.add_command(
+            label="Delete Task",
+            foreground=p["danger"],
+            command=lambda: self._delete_task(t),
+        )
+        menu.tk_popup(event.x_root, event.y_root)
 
     def _cycle_priority(self, task_id: str) -> None:
         updated = self.controller.task_service.cycle_priority(task_id)

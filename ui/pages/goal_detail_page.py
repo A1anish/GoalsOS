@@ -1,4 +1,4 @@
-"""Detailed workspace page for a single Goal and its full hierarchy."""
+"""Clean, streamlined Goal Workspace page with inline task creation and sub-tabs."""
 
 import tkinter as tk
 from tkinter import messagebox
@@ -8,6 +8,7 @@ from models.entities import Goal, Milestone, ProgressStats, Project, Task
 from ui.app_controller import AppController
 from ui.components.canvas_widgets import (
     CircularProgressRing,
+    InteractiveGoalTreeCanvas,
     SmoothProgressBar,
 )
 from ui.components.dialogs import (
@@ -22,8 +23,10 @@ from utils.validators import ValidationError
 
 
 class GoalDetailPage(tk.Frame):
-    """Deep workspace displaying a Goal's metadata, schedule feasibility,
-    collapsible Milestones -> Projects -> Tasks hierarchy, and activity log.
+    """Streamlined workspace for a single Goal featuring sub-tabs:
+    1. Execution Plan (with inline quick-add task bars and clean context menus)
+    2. Visual Node Map (full-width interactive Canvas)
+    3. Schedule & History (feasibility analysis & activity log)
     """
 
     def __init__(self, parent: tk.Widget, controller: AppController) -> None:
@@ -31,9 +34,14 @@ class GoalDetailPage(tk.Frame):
         p = controller.colors
         super().__init__(parent, bg=p["bg"])
 
+        self.active_tab = tk.StringVar(value="plan")  # 'plan', 'visual', 'schedule'
         self.collapsed_milestones: Set[str] = set()
         self.scroll = ScrollableFrame(self, bg=p["bg"])
         self.scroll.pack(fill="both", expand=True)
+        self.render()
+
+    def _set_tab(self, tab_key: str) -> None:
+        self.active_tab.set(tab_key)
         self.render()
 
     def _toggle_milestone_collapse(self, milestone_id: str) -> None:
@@ -65,7 +73,7 @@ class GoalDetailPage(tk.Frame):
             else None
         )
         if not hierarchy:
-            empty = tk.Frame(container, bg=p["bg"], padx=30, pady=50)
+            empty = tk.Frame(container, bg=p["bg"], padx=32, pady=50)
             empty.pack(fill="x")
             tk.Label(
                 empty,
@@ -90,15 +98,14 @@ class GoalDetailPage(tk.Frame):
         goal: Goal = hierarchy["goal"]
         g_prog: ProgressStats = hierarchy["progress"]
         milestones = hierarchy["milestones"]
-        feasibility = self.controller.analytics_service.analyze_goal_feasibility(goal)
 
-        # --- Top Navigation & Action Bar ---
-        top_bar = tk.Frame(container, bg=p["bg"], padx=26, pady=14)
+        # --- Top Navigation & Clean Actions ---
+        top_bar = tk.Frame(container, bg=p["bg"], padx=32, pady=16)
         top_bar.pack(fill="x")
 
         tk.Button(
             top_bar,
-            text="← Back to Goals",
+            text="← All Goals",
             bg=p["surface"],
             fg=p["text"],
             relief="flat",
@@ -114,20 +121,7 @@ class GoalDetailPage(tk.Frame):
 
         tk.Button(
             right_btns,
-            text="❖ Open in Visual Explorer",
-            bg=p["surface"],
-            fg=p["accent"],
-            font=("Segoe UI", 9, "bold"),
-            relief="flat",
-            padx=12,
-            pady=5,
-            cursor="hand2",
-            command=lambda gid=goal.id: self.controller.open_goal_explorer(gid),
-        ).pack(side="left", padx=(0, 8))
-
-        tk.Button(
-            right_btns,
-            text="✎ Edit Goal",
+            text="Edit Goal",
             bg=p["surface"],
             fg=p["text"],
             font=("Segoe UI", 9),
@@ -138,29 +132,15 @@ class GoalDetailPage(tk.Frame):
             command=lambda g=goal: GoalFormDialog(self, self.controller, goal=g),
         ).pack(side="left", padx=(0, 8))
 
-        # Status transition buttons
         if goal.status == "active":
             tk.Button(
                 right_btns,
-                text="⏸ Pause",
-                bg=p["surface"],
-                fg=p["warning"],
-                font=("Segoe UI", 9, "bold"),
-                relief="flat",
-                padx=10,
-                pady=5,
-                cursor="hand2",
-                command=lambda gid=goal.id: self._change_status(gid, "paused"),
-            ).pack(side="left", padx=(0, 8))
-
-            tk.Button(
-                right_btns,
-                text="✓ Mark Completed",
+                text="✓ Complete Goal",
                 bg=p["positive"],
                 fg="#FFFFFF",
                 font=("Segoe UI", 9, "bold"),
                 relief="flat",
-                padx=12,
+                padx=14,
                 pady=5,
                 cursor="hand2",
                 command=lambda g=goal, st=g_prog: self._complete_goal_action(g, st),
@@ -168,67 +148,64 @@ class GoalDetailPage(tk.Frame):
         else:
             tk.Button(
                 right_btns,
-                text="↻ Reopen to Active",
+                text="↻ Reopen Goal",
                 bg=p["accent"],
                 fg="#FFFFFF",
                 font=("Segoe UI", 9, "bold"),
                 relief="flat",
-                padx=12,
+                padx=14,
                 pady=5,
                 cursor="hand2",
                 command=lambda gid=goal.id: self._change_status(gid, "active"),
             ).pack(side="left", padx=(0, 8))
 
-        if goal.status != "archived":
-            tk.Button(
-                right_btns,
-                text="Archive",
-                bg=p["surface"],
-                fg=p["text_muted"],
-                font=("Segoe UI", 9),
-                relief="flat",
-                padx=10,
-                pady=5,
-                cursor="hand2",
-                command=lambda g=goal: self._archive_goal_action(g),
-            ).pack(side="left")
+        # More menu button (Pause / Archive)
+        more_btn = tk.Button(
+            right_btns,
+            text="•••",
+            bg=p["surface"],
+            fg=p["text_muted"],
+            font=("Segoe UI", 9, "bold"),
+            relief="flat",
+            padx=10,
+            pady=5,
+            cursor="hand2",
+        )
+        more_btn.pack(side="left")
+        more_btn.bind(
+            "<Button-1>",
+            lambda e, g=goal: self._show_goal_menu(e, g),
+        )
 
-        # --- Hero Goal Banner ---
+        # --- Clean Hero Card ---
         hero = tk.Frame(
             container,
             bg=p["surface"],
             highlightbackground=p["border"],
             highlightthickness=1,
         )
-        hero.pack(fill="x", padx=26, pady=(0, 16))
+        hero.pack(fill="x", padx=32, pady=(0, 18))
 
-        strip = tk.Frame(hero, bg=goal.color or p["accent"], width=6)
+        strip = tk.Frame(hero, bg=goal.color or p["accent"], width=5)
         strip.pack(side="left", fill="y")
 
-        hero_inner = tk.Frame(hero, bg=p["surface"], padx=22, pady=18)
+        hero_inner = tk.Frame(hero, bg=p["surface"], padx=24, pady=18)
         hero_inner.pack(side="left", fill="both", expand=True)
 
         info_col = tk.Frame(hero_inner, bg=p["surface"])
         info_col.pack(side="left", fill="both", expand=True, padx=(0, 20))
 
-        badge_row = tk.Frame(info_col, bg=p["surface"])
-        badge_row.pack(fill="x")
+        dl_text, _ = format_relative_deadline(
+            goal.deadline, is_completed=(goal.status == "completed")
+        )
         tk.Label(
-            badge_row,
-            text=f" {goal.category.upper()} ",
-            bg=p["surface_alt"],
+            info_col,
+            text=f"{goal.category.upper()}   •   {goal.priority.upper()} PRIORITY   •   {dl_text.upper()}",
+            bg=p["surface"],
             fg=goal.color or p["accent"],
             font=("Segoe UI", 8, "bold"),
-            padx=6,
-            pady=2,
-        ).pack(side="left")
-        tk.Label(
-            badge_row,
-            text=f"  •  PRIORITY: {goal.priority.upper()}  •  STATUS: {goal.status.upper()}",
-            bg=p["surface"],
-            fg=p["text_muted"],
-            font=("Segoe UI", 8, "bold"),
-        ).pack(side="left")
+            anchor="w",
+        ).pack(fill="x")
 
         tk.Label(
             info_col,
@@ -237,62 +214,24 @@ class GoalDetailPage(tk.Frame):
             fg=p["text"],
             font=("Segoe UI", 18, "bold"),
             anchor="w",
-        ).pack(fill="x", pady=(6, 4))
+        ).pack(fill="x", pady=(4, 4))
 
-        tk.Label(
-            info_col,
-            text=goal.description or "No description specified.",
-            bg=p["surface"],
-            fg=p["text_muted"],
-            font=("Segoe UI", 10),
-            anchor="w",
-            justify="left",
-            wraplength=760,
-        ).pack(fill="x", pady=(0, 10))
+        if goal.description:
+            tk.Label(
+                info_col,
+                text=goal.description,
+                bg=p["surface"],
+                fg=p["text_muted"],
+                font=("Segoe UI", 10),
+                anchor="w",
+                justify="left",
+                wraplength=780,
+            ).pack(fill="x")
 
-        dl_text, dl_state = format_relative_deadline(
-            goal.deadline, is_completed=(goal.status == "completed")
-        )
-        target_str = (
-            f"  |  Target: {goal.target_value:g} {goal.target_unit}"
-            if goal.target_value is not None
-            else ""
-        )
-        meta_str = f"Start: {goal.start_date or '—'}   |   Deadline: {goal.deadline or 'None'} ({dl_text})   |   Progress: {g_prog.status_label}{target_str}"
-        tk.Label(
-            info_col,
-            text=meta_str,
-            bg=p["surface"],
-            fg=p["text"],
-            font=("Segoe UI", 9, "bold"),
-            anchor="w",
-        ).pack(fill="x")
-
-        # Feasibility Banner inside Hero
-        f_colors = {
-            "feasible": p["positive"],
-            "completed": p["positive"],
-            "tight": p["warning"],
-            "at_risk": p["danger"],
-            "overdue": p["danger"],
-        }
-        f_col = f_colors.get(feasibility["status"], p["info"])
-        f_box = tk.Frame(info_col, bg=p["surface_alt"], padx=12, pady=6)
-        f_box.pack(fill="x", pady=(10, 0))
-        tk.Label(
-            f_box,
-            text=f"Schedule Analysis: {feasibility['label']} — {feasibility['detail']}",
-            bg=p["surface_alt"],
-            fg=f_col,
-            font=("Segoe UI", 8, "bold"),
-            anchor="w",
-        ).pack(fill="x")
-
-        # Right side of Hero: Circular Progress Ring
         ring = CircularProgressRing(
             hero_inner,
-            size=96,
-            thickness=9,
+            size=82,
+            thickness=8,
             percentage=g_prog.percentage,
             bg_color=p["surface"],
             track_color=p["track"],
@@ -302,107 +241,181 @@ class GoalDetailPage(tk.Frame):
             text_color=p["text"],
             sub_label=f"{g_prog.completed_tasks}/{g_prog.total_eligible_tasks}",
         )
-        ring.pack(side="right", padx=8)
+        ring.pack(side="right")
 
-        # --- Milestones, Projects, and Tasks Section Header ---
-        sec_head = tk.Frame(container, bg=p["bg"], padx=26, pady=6)
-        sec_head.pack(fill="x")
-        tk.Label(
-            sec_head,
-            text=f"Execution Plan ({len(milestones)} Milestone{'s' if len(milestones) != 1 else ''})",
-            bg=p["bg"],
-            fg=p["text"],
-            font=("Segoe UI", 14, "bold"),
-        ).pack(side="left")
+        # --- Sub-Tabs Bar + "+ Add Milestone" ---
+        sub_bar = tk.Frame(container, bg=p["bg"], padx=32)
+        sub_bar.pack(fill="x", pady=(0, 14))
 
-        tk.Button(
-            sec_head,
-            text="+ Add Milestone",
-            bg=p["accent"],
-            fg="#FFFFFF",
-            font=("Segoe UI", 9, "bold"),
-            relief="flat",
-            padx=14,
-            pady=6,
-            cursor="hand2",
-            command=lambda gid=goal.id: MilestoneFormDialog(
-                self, self.controller, goal_id=gid
-            ),
-        ).pack(side="right")
+        cur_tab = self.active_tab.get()
+        for t_key, t_lbl in [
+            ("plan", f"☰ Execution Plan ({len(milestones)} Phases)"),
+            ("visual", "❖ Visual Node Map"),
+            ("schedule", "◷ Feasibility & History"),
+        ]:
+            is_sel = cur_tab == t_key
+            tk.Button(
+                sub_bar,
+                text=t_lbl,
+                bg=p["accent"] if is_sel else p["surface"],
+                fg="#FFFFFF" if is_sel else p["text_muted"],
+                font=("Segoe UI", 9, "bold" if is_sel else "normal"),
+                relief="flat",
+                padx=14,
+                pady=6,
+                cursor="hand2",
+                command=lambda k=t_key: self._set_tab(k),
+            ).pack(side="left", padx=(0, 8))
 
-        # --- Milestones List ---
-        m_list_frame = tk.Frame(container, bg=p["bg"], padx=26)
-        m_list_frame.pack(fill="x", pady=(6, 20))
+        if cur_tab == "plan":
+            tk.Button(
+                sub_bar,
+                text="+ Add Milestone",
+                bg=p["accent"],
+                fg="#FFFFFF",
+                font=("Segoe UI", 9, "bold"),
+                relief="flat",
+                padx=14,
+                pady=6,
+                cursor="hand2",
+                command=lambda gid=goal.id: MilestoneFormDialog(
+                    self, self.controller, goal_id=gid
+                ),
+            ).pack(side="right")
 
-        if not milestones:
-            empty_m = tk.Frame(
-                m_list_frame,
+        # --- Tab Content ---
+        content_wrap = tk.Frame(container, bg=p["bg"], padx=32)
+        content_wrap.pack(fill="both", expand=True, pady=(0, 32))
+
+        if cur_tab == "plan":
+            if not milestones:
+                empty_m = tk.Frame(
+                    content_wrap,
+                    bg=p["surface"],
+                    highlightbackground=p["border"],
+                    highlightthickness=1,
+                    padx=24,
+                    pady=36,
+                )
+                empty_m.pack(fill="x")
+                tk.Label(
+                    empty_m,
+                    text="Break this goal into Milestones, Projects, and Tasks",
+                    bg=p["surface"],
+                    fg=p["text"],
+                    font=("Segoe UI", 12, "bold"),
+                ).pack()
+                tk.Button(
+                    empty_m,
+                    text="+ Create First Milestone",
+                    bg=p["accent"],
+                    fg="#FFFFFF",
+                    font=("Segoe UI", 9, "bold"),
+                    relief="flat",
+                    padx=16,
+                    pady=7,
+                    cursor="hand2",
+                    command=lambda gid=goal.id: MilestoneFormDialog(
+                        self, self.controller, goal_id=gid
+                    ),
+                ).pack(pady=(12, 0))
+            else:
+                for idx, m_node in enumerate(milestones):
+                    self._build_milestone_section(
+                        content_wrap, goal, m_node, idx, len(milestones)
+                    )
+
+        elif cur_tab == "visual":
+            canvas_box = tk.Frame(
+                content_wrap,
+                bg=p["canvas_bg"],
+                highlightbackground=p["border"],
+                highlightthickness=1,
+                height=520,
+            )
+            canvas_box.pack(fill="both", expand=True)
+            canvas_box.pack_propagate(False)
+
+            tree_canvas = InteractiveGoalTreeCanvas(
+                canvas_box,
+                colors=p,
+                on_double_click_node=self._on_canvas_double_click,
+            )
+            tree_canvas.pack(fill="both", expand=True)
+            tree_canvas.set_hierarchy(hierarchy)
+
+        else:  # 'schedule'
+            feasibility = self.controller.analytics_service.analyze_goal_feasibility(
+                goal
+            )
+            f_card = tk.Frame(
+                content_wrap,
                 bg=p["surface"],
                 highlightbackground=p["border"],
                 highlightthickness=1,
-                padx=24,
-                pady=28,
+                padx=22,
+                pady=18,
             )
-            empty_m.pack(fill="x")
+            f_card.pack(fill="x", pady=(0, 16))
             tk.Label(
-                empty_m,
-                text="No milestones created for this goal yet.",
+                f_card,
+                text="SCHEDULE FEASIBILITY ANALYSIS",
+                bg=p["surface"],
+                fg=p["accent"],
+                font=("Segoe UI", 9, "bold"),
+                anchor="w",
+            ).pack(fill="x")
+            tk.Label(
+                f_card,
+                text=feasibility["label"],
                 bg=p["surface"],
                 fg=p["text"],
-                font=("Segoe UI", 11, "bold"),
-            ).pack()
-            tk.Label(
-                empty_m,
-                text="Add your first milestone to break this goal into structured phases, projects, and actionable tasks.",
-                bg=p["surface"],
-                fg=p["text_muted"],
-                font=("Segoe UI", 9),
-                pady=4,
-            ).pack()
-        else:
-            for idx, m_node in enumerate(milestones):
-                self._build_milestone_section(
-                    m_list_frame, goal, m_node, idx, len(milestones)
-                )
-
-        # --- Goal Activity History ---
-        act_panel = tk.Frame(
-            container,
-            bg=p["surface"],
-            highlightbackground=p["border"],
-            highlightthickness=1,
-            padx=20,
-            pady=14,
-        )
-        act_panel.pack(fill="x", padx=26, pady=(0, 28))
-        tk.Label(
-            act_panel,
-            text="Goal Activity History",
-            bg=p["surface"],
-            fg=p["text"],
-            font=("Segoe UI", 11, "bold"),
-            anchor="w",
-        ).pack(fill="x", pady=(0, 8))
-
-        events = self.controller.activity_repo.list_recent(limit=12)
-        for ev in events[:6]:
-            erow = tk.Frame(act_panel, bg=p["surface"], pady=2)
-            erow.pack(fill="x")
-            tk.Label(
-                erow,
-                text=f"•  {ev.description}",
-                bg=p["surface"],
-                fg=p["text_muted"],
-                font=("Segoe UI", 9),
+                font=("Segoe UI", 14, "bold"),
                 anchor="w",
-            ).pack(side="left")
+            ).pack(fill="x", pady=(6, 2))
             tk.Label(
-                erow,
-                text=ev.created_at.replace("T", " "),
+                f_card,
+                text=feasibility["detail"],
                 bg=p["surface"],
-                fg=p["text_dim"],
-                font=("Segoe UI", 8),
-            ).pack(side="right")
+                fg=p["text_muted"],
+                font=("Segoe UI", 10),
+                anchor="w",
+            ).pack(fill="x")
+
+            act_card = tk.Frame(
+                content_wrap,
+                bg=p["surface"],
+                highlightbackground=p["border"],
+                highlightthickness=1,
+                padx=22,
+                pady=18,
+            )
+            act_card.pack(fill="x")
+            tk.Label(
+                act_card,
+                text="RECENT ACTIVITY LOG",
+                bg=p["surface"],
+                fg=p["accent"],
+                font=("Segoe UI", 9, "bold"),
+                anchor="w",
+            ).pack(fill="x", pady=(0, 10))
+            for ev in self.controller.activity_repo.list_recent(limit=10):
+                r = tk.Frame(act_card, bg=p["surface"], pady=3)
+                r.pack(fill="x")
+                tk.Label(
+                    r,
+                    text=f"•  {ev.description}",
+                    bg=p["surface"],
+                    fg=p["text"],
+                    font=("Segoe UI", 9),
+                ).pack(side="left")
+                tk.Label(
+                    r,
+                    text=ev.created_at.replace("T", " "),
+                    bg=p["surface"],
+                    fg=p["text_dim"],
+                    font=("Segoe UI", 8),
+                ).pack(side="right")
 
     def _build_milestone_section(
         self,
@@ -424,16 +437,15 @@ class GoalDetailPage(tk.Frame):
             highlightbackground=p["border"],
             highlightthickness=1,
         )
-        m_card.pack(fill="x", pady=(0, 14))
+        m_card.pack(fill="x", pady=(0, 16))
 
-        # Milestone Header Bar
-        m_head = tk.Frame(m_card, bg=p["surface_alt"], padx=16, pady=12)
+        m_head = tk.Frame(m_card, bg=p["surface_alt"], padx=18, pady=12)
         m_head.pack(fill="x")
 
         toggle_icon = "▶" if is_collapsed else "▼"
         tk.Button(
             m_head,
-            text=f"{toggle_icon}  Milestone {idx + 1}: {m.title}",
+            text=f"{toggle_icon}  {m.title}",
             bg=p["surface_alt"],
             fg=p["text"],
             font=("Segoe UI", 11, "bold"),
@@ -443,26 +455,22 @@ class GoalDetailPage(tk.Frame):
             command=lambda mid=m.id: self._toggle_milestone_collapse(mid),
         ).pack(side="left")
 
-        dl_lbl, _ = format_relative_deadline(
-            m.deadline, is_completed=(m.status == "completed")
-        )
         tk.Label(
             m_head,
-            text=f"   {m_prog.status_label}   •   {dl_lbl}",
+            text=f"   {m_prog.status_label}",
             bg=p["surface_alt"],
-            fg=p["accent"] if m_prog.percentage < 100 else p["positive"],
-            font=("Segoe UI", 9, "bold"),
-        ).pack(side="left", padx=8)
+            fg=p["text_muted"],
+            font=("Segoe UI", 9),
+        ).pack(side="left")
 
-        # Milestone Action Buttons
         m_actions = tk.Frame(m_head, bg=p["surface_alt"])
         m_actions.pack(side="right")
 
         tk.Button(
             m_actions,
-            text="+ Add Project",
-            bg=p["accent"],
-            fg="#FFFFFF",
+            text="+ Project",
+            bg=p["surface"],
+            fg=p["accent"],
             font=("Segoe UI", 8, "bold"),
             relief="flat",
             padx=10,
@@ -473,58 +481,29 @@ class GoalDetailPage(tk.Frame):
             ),
         ).pack(side="left", padx=(0, 6))
 
-        if idx > 0:
-            tk.Button(
-                m_actions,
-                text="↑",
-                bg=p["surface"],
-                fg=p["text"],
-                relief="flat",
-                padx=6,
-                command=lambda mid=m.id: self._reorder_m(mid, -1),
-            ).pack(side="left", padx=2)
-        if idx < total_m - 1:
-            tk.Button(
-                m_actions,
-                text="↓",
-                bg=p["surface"],
-                fg=p["text"],
-                relief="flat",
-                padx=6,
-                command=lambda mid=m.id: self._reorder_m(mid, 1),
-            ).pack(side="left", padx=2)
-
-        tk.Button(
+        menu_btn = tk.Button(
             m_actions,
-            text="Edit",
+            text="•••",
             bg=p["surface"],
             fg=p["text_muted"],
-            font=("Segoe UI", 8),
+            font=("Segoe UI", 8, "bold"),
             relief="flat",
             padx=8,
             pady=3,
-            command=lambda m_obj=m, gid=goal.id: MilestoneFormDialog(
-                self, self.controller, goal_id=gid, milestone=m_obj
+            cursor="hand2",
+        )
+        menu_btn.pack(side="left")
+        menu_btn.bind(
+            "<Button-1>",
+            lambda e, m_obj=m, g_id=goal.id, i=idx, tot=total_m: self._show_milestone_menu(
+                e, m_obj, g_id, i, tot
             ),
-        ).pack(side="left", padx=4)
+        )
 
-        tk.Button(
-            m_actions,
-            text="✕",
-            bg=p["surface"],
-            fg=p["danger"],
-            font=("Segoe UI", 8, "bold"),
-            relief="flat",
-            padx=6,
-            pady=3,
-            command=lambda m_obj=m: self._delete_milestone(m_obj),
-        ).pack(side="left")
-
-        # Milestone Progress Bar
         SmoothProgressBar(
             m_card,
             percentage=m_prog.percentage,
-            height=5,
+            height=4,
             bg_color=p["surface"],
             track_color=p["track"],
             fill_color=p["positive"]
@@ -535,27 +514,16 @@ class GoalDetailPage(tk.Frame):
         if is_collapsed:
             return
 
-        m_body = tk.Frame(m_card, bg=p["surface"], padx=18, pady=12)
+        m_body = tk.Frame(m_card, bg=p["surface"], padx=20, pady=14)
         m_body.pack(fill="x")
-
-        if m.description:
-            tk.Label(
-                m_body,
-                text=m.description,
-                bg=p["surface"],
-                fg=p["text_muted"],
-                font=("Segoe UI", 9),
-                anchor="w",
-            ).pack(fill="x", pady=(0, 10))
 
         if not projects:
             tk.Label(
                 m_body,
-                text="No projects in this milestone yet. Click '+ Add Project' above to organize tasks.",
+                text="No projects yet — click '+ Project' above to add one.",
                 bg=p["surface"],
                 fg=p["text_muted"],
                 font=("Segoe UI", 9),
-                pady=6,
             ).pack(anchor="w")
             return
 
@@ -579,17 +547,17 @@ class GoalDetailPage(tk.Frame):
             bg=p["surface_alt"],
             highlightbackground=p["border"],
             highlightthickness=1,
-            padx=14,
-            pady=10,
+            padx=16,
+            pady=12,
         )
-        p_box.pack(fill="x", pady=(0, 10))
+        p_box.pack(fill="x", pady=(0, 12))
 
         p_head = tk.Frame(p_box, bg=p["surface_alt"])
-        p_head.pack(fill="x", pady=(0, 6))
+        p_head.pack(fill="x", pady=(0, 8))
 
         tk.Label(
             p_head,
-            text=f"▣  Project: {proj.title}",
+            text=proj.title,
             bg=p["surface_alt"],
             fg=p["text"],
             font=("Segoe UI", 10, "bold"),
@@ -597,80 +565,82 @@ class GoalDetailPage(tk.Frame):
 
         tk.Label(
             p_head,
-            text=f"  ({p_prog.status_label}  •  Priority: {proj.priority.upper()})",
+            text=f"   {p_prog.status_label}",
             bg=p["surface_alt"],
             fg=p["text_muted"],
-            font=("Segoe UI", 8, "bold"),
+            font=("Segoe UI", 8),
         ).pack(side="left")
 
-        p_acts = tk.Frame(p_head, bg=p["surface_alt"])
-        p_acts.pack(side="right")
-
-        tk.Button(
-            p_acts,
-            text="+ Add Task",
-            bg=p["accent"],
-            fg="#FFFFFF",
+        p_menu_btn = tk.Button(
+            p_head,
+            text="•••",
+            bg=p["surface"],
+            fg=p["text_muted"],
             font=("Segoe UI", 8, "bold"),
             relief="flat",
             padx=8,
             pady=2,
             cursor="hand2",
-            command=lambda pid=proj.id: TaskFormDialog(
-                self, self.controller, project_id=pid
+        )
+        p_menu_btn.pack(side="right")
+        p_menu_btn.bind(
+            "<Button-1>",
+            lambda e, pr=proj, mid=milestone.id, gid=goal.id: self._show_project_menu(
+                e, pr, mid, gid
             ),
-        ).pack(side="left", padx=(0, 6))
-
-        tk.Button(
-            p_acts,
-            text="Edit",
-            bg=p["surface"],
-            fg=p["text_muted"],
-            font=("Segoe UI", 8),
-            relief="flat",
-            padx=6,
-            pady=2,
-            command=lambda pr=proj, mid=milestone.id, gid=goal.id: ProjectFormDialog(
-                self,
-                self.controller,
-                milestone_id=mid,
-                goal_id=gid,
-                project=pr,
-            ),
-        ).pack(side="left", padx=(0, 4))
-
-        tk.Button(
-            p_acts,
-            text="✕",
-            bg=p["surface"],
-            fg=p["danger"],
-            font=("Segoe UI", 8, "bold"),
-            relief="flat",
-            padx=5,
-            pady=2,
-            command=lambda pr=proj: self._delete_project(pr),
-        ).pack(side="left")
-
-        if not tasks:
-            tk.Label(
-                p_box,
-                text="No tasks in this project yet.",
-                bg=p["surface_alt"],
-                fg=p["text_muted"],
-                font=("Segoe UI", 8),
-                pady=4,
-            ).pack(anchor="w")
-            return
+        )
 
         for t in tasks:
             self._build_task_item(p_box, t)
+
+        # Inline Quick-Add Task Bar inside every Project!
+        quick_row = tk.Frame(p_box, bg=p["surface_alt"], pady=4)
+        quick_row.pack(fill="x")
+
+        q_ent = tk.Entry(
+            quick_row,
+            bg=p["input_bg"],
+            fg=p["text"],
+            insertbackground=p["text"],
+            highlightbackground=p["border"],
+            highlightthickness=1,
+            relief="flat",
+            font=("Segoe UI", 9),
+        )
+        q_ent.pack(side="left", fill="x", expand=True, ipady=4, padx=(0, 8))
+
+        def _quick_add(_e=None, pid=proj.id, entry=q_ent) -> None:
+            t_title = entry.get().strip()
+            if not t_title:
+                TaskFormDialog(self, self.controller, project_id=pid)
+                return
+            self.controller.task_service.create_task(
+                project_id=pid, title=t_title
+            )
+            self.controller.show_toast(f"Added task '{t_title}'", "positive")
+            self.controller.notify_data_changed("task_created_inline")
+
+        q_ent.bind("<Return>", _quick_add)
+
+        tk.Button(
+            quick_row,
+            text="+ Add Task",
+            bg=p["surface"],
+            fg=p["accent"],
+            font=("Segoe UI", 8, "bold"),
+            relief="flat",
+            padx=10,
+            pady=4,
+            cursor="hand2",
+            command=_quick_add,
+        ).pack(side="right")
 
     def _build_task_item(self, parent: tk.Widget, t: Task) -> None:
         p = self.controller.colors
         is_comp = t.status == "completed"
         is_canc = t.status == "cancelled"
 
-        t_row = tk.Frame(parent, bg=p["surface"], padx=10, pady=6)
+        t_row = tk.Frame(parent, bg=p["surface"], padx=12, pady=7)
         t_row.pack(fill="x", pady=2)
 
         chk = tk.Button(
@@ -686,23 +656,28 @@ class GoalDetailPage(tk.Frame):
             cursor="hand2",
             command=lambda tid=t.id: self.controller.toggle_task_completion(tid),
         )
-        chk.pack(side="left", padx=(0, 8))
+        chk.pack(side="left", padx=(0, 10))
 
         title_style = "overstrike" if (is_comp or is_canc) else "normal"
-        tk.Label(
+        lbl = tk.Label(
             t_row,
-            text=t.title + (" (CANCELLED)" if is_canc else ""),
+            text=t.title + (" (Cancelled)" if is_canc else ""),
             bg=p["surface"],
             fg=p["text_muted"] if (is_comp or is_canc) else p["text"],
             font=("Segoe UI", 9, title_style),
             anchor="w",
-        ).pack(side="left", fill="x", expand=True)
+            cursor="hand2",
+        )
+        lbl.pack(side="left", fill="x", expand=True)
+        lbl.bind(
+            "<Button-1>",
+            lambda _e, tid=t.id: self.controller.toggle_task_completion(tid),
+        )
 
         dl_lbl, dl_state = format_relative_deadline(t.due_date, is_completed=is_comp)
-        meta = f"{t.priority.upper()}  •  {format_duration(t.estimated_minutes)}  •  {dl_lbl}"
         tk.Label(
             t_row,
-            text=meta,
+            text=f"{format_duration(t.estimated_minutes)}  •  {dl_lbl}",
             bg=p["surface"],
             fg=p.get(dl_state, p["text_muted"])
             if dl_state == "danger"
@@ -711,31 +686,134 @@ class GoalDetailPage(tk.Frame):
             padx=8,
         ).pack(side="left")
 
-        tk.Button(
+        t_menu_btn = tk.Button(
             t_row,
-            text="Edit",
-            bg=p["surface_alt"],
+            text="•••",
+            bg=p["surface"],
             fg=p["text_muted"],
-            font=("Segoe UI", 8),
+            font=("Segoe UI", 8, "bold"),
             relief="flat",
             padx=6,
             pady=1,
-            command=lambda task_obj=t: TaskFormDialog(
-                self, self.controller, task=task_obj
-            ),
-        ).pack(side="left", padx=2)
+            cursor="hand2",
+        )
+        t_menu_btn.pack(side="right")
+        t_menu_btn.bind(
+            "<Button-1>", lambda e, task_o=t: self._show_task_menu(e, task_o)
+        )
 
-        tk.Button(
-            t_row,
-            text="✕",
-            bg=p["surface_alt"],
-            fg=p["danger"],
-            font=("Segoe UI", 8),
-            relief="flat",
-            padx=5,
-            pady=1,
-            command=lambda task_obj=t: self._delete_task(task_obj),
-        ).pack(side="left")
+    # --- Clean Context Menus (Replaces Button Clutter) ---
+
+    def _show_goal_menu(self, event: tk.Event, goal: Goal) -> None:
+        p = self.controller.colors
+        menu = tk.Menu(self, tearoff=0, bg=p["surface"], fg=p["text"])
+        menu.add_command(
+            label="Open in Full Explorer",
+            command=lambda: self.controller.open_goal_explorer(goal.id),
+        )
+        if goal.status == "active":
+            menu.add_command(
+                label="Pause Goal",
+                command=lambda: self._change_status(goal.id, "paused"),
+            )
+        if goal.status != "archived":
+            menu.add_command(
+                label="Archive Goal",
+                command=lambda: self._archive_goal_action(goal),
+            )
+        menu.add_separator()
+        menu.add_command(
+            label="Delete Goal Permanently",
+            foreground=p["danger"],
+            command=lambda: self._delete_goal_action(goal),
+        )
+        menu.tk_popup(event.x_root, event.y_root)
+
+    def _show_milestone_menu(
+        self,
+        event: tk.Event,
+        m: Milestone,
+        goal_id: str,
+        idx: int,
+        total_m: int,
+    ) -> None:
+        p = self.controller.colors
+        menu = tk.Menu(self, tearoff=0, bg=p["surface"], fg=p["text"])
+        menu.add_command(
+            label="Edit Milestone",
+            command=lambda: MilestoneFormDialog(
+                self, self.controller, goal_id=goal_id, milestone=m
+            ),
+        )
+        if idx > 0:
+            menu.add_command(
+                label="Move Up ↑",
+                command=lambda: self._reorder_m(m.id, -1),
+            )
+        if idx < total_m - 1:
+            menu.add_command(
+                label="Move Down ↓",
+                command=lambda: self._reorder_m(m.id, 1),
+            )
+        menu.add_separator()
+        menu.add_command(
+            label="Delete Milestone",
+            foreground=p["danger"],
+            command=lambda: self._delete_milestone(m),
+        )
+        menu.tk_popup(event.x_root, event.y_root)
+
+    def _show_project_menu(
+        self, event: tk.Event, proj: Project, milestone_id: str, goal_id: str
+    ) -> None:
+        p = self.controller.colors
+        menu = tk.Menu(self, tearoff=0, bg=p["surface"], fg=p["text"])
+        menu.add_command(
+            label="Edit Project",
+            command=lambda: ProjectFormDialog(
+                self,
+                self.controller,
+                milestone_id=milestone_id,
+                goal_id=goal_id,
+                project=proj,
+            ),
+        )
+        menu.add_command(
+            label="Add Task (Detailed Form)",
+            command=lambda: TaskFormDialog(
+                self, self.controller, project_id=proj.id
+            ),
+        )
+        menu.add_separator()
+        menu.add_command(
+            label="Delete Project",
+            foreground=p["danger"],
+            command=lambda: self._delete_project(proj),
+        )
+        menu.tk_popup(event.x_root, event.y_root)
+
+    def _show_task_menu(self, event: tk.Event, t: Task) -> None:
+        p = self.controller.colors
+        menu = tk.Menu(self, tearoff=0, bg=p["surface"], fg=p["text"])
+        menu.add_command(
+            label="Edit Task",
+            command=lambda: TaskFormDialog(self, self.controller, task=t),
+        )
+        menu.add_command(
+            label="Complete / Reopen",
+            command=lambda: self.controller.toggle_task_completion(t.id),
+        )
+        menu.add_separator()
+        menu.add_command(
+            label="Delete Task",
+            foreground=p["danger"],
+            command=lambda: self._delete_task(t),
+        )
+        menu.tk_popup(event.x_root, event.y_root)
+
+    def _on_canvas_double_click(self, etype: str, eid: str) -> None:
+        if etype == "task":
+            self.controller.toggle_task_completion(eid)
 
     def _reorder_m(self, milestone_id: str, direction: int) -> None:
         self.controller.goal_service.reorder_milestone(milestone_id, direction)
@@ -776,9 +854,19 @@ class GoalDetailPage(tk.Frame):
     def _archive_goal_action(self, goal: Goal) -> None:
         if messagebox.askyesno(
             "Archive Goal",
-            f"Archive '{goal.title}'? Historical data will be preserved and you can restore it anytime from the Archived tab.",
+            f"Archive '{goal.title}'? Historical data will be preserved.",
         ):
             self._change_status(goal.id, "archived")
+
+    def _delete_goal_action(self, goal: Goal) -> None:
+        if messagebox.askyesno(
+            "Delete Goal",
+            f"Permanently delete '{goal.title}' and all its milestones, projects, and tasks?",
+        ):
+            self.controller.goal_service.delete_goal(goal.id)
+            self.controller.selected_goal_id = None
+            self.controller.navigate("goals")
+            self.controller.notify_data_changed("goal_deleted")
 
     def _delete_milestone(self, m: Milestone) -> None:
         if messagebox.askyesno(

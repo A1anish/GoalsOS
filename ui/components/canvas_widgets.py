@@ -183,7 +183,7 @@ class SmoothProgressBar(tk.Canvas):
 
 
 class MetricCard(tk.Frame):
-    """Modern dashboard summary metric card with top accent bar and comparison badge."""
+    """Clean, minimalist summary metric card."""
 
     def __init__(
         self,
@@ -205,18 +205,18 @@ class MetricCard(tk.Frame):
         )
         self.colors = colors
 
-        top_bar = tk.Frame(self, bg=accent_color, height=4)
+        top_bar = tk.Frame(self, bg=accent_color, height=3)
         top_bar.pack(fill="x", side="top")
 
-        body = tk.Frame(self, bg=colors["surface"], padx=16, pady=12)
+        body = tk.Frame(self, bg=colors["surface"], padx=18, pady=14)
         body.pack(fill="both", expand=True)
 
         lbl_title = tk.Label(
             body,
-            text=title.upper(),
+            text=title,
             bg=colors["surface"],
             fg=colors["text_muted"],
-            font=("Segoe UI", 8, "bold"),
+            font=("Segoe UI", 9, "bold"),
             anchor="w",
         )
         lbl_title.pack(fill="x")
@@ -226,7 +226,7 @@ class MetricCard(tk.Frame):
             text=value,
             bg=colors["surface"],
             fg=colors["text"],
-            font=("Segoe UI", 21, "bold"),
+            font=("Segoe UI", 20, "bold"),
             anchor="w",
         )
         lbl_val.pack(fill="x", pady=(4, 2))
@@ -236,7 +236,7 @@ class MetricCard(tk.Frame):
             text=subtitle,
             bg=colors["surface"],
             fg=accent_color,
-            font=("Segoe UI", 9),
+            font=("Segoe UI", 8),
             anchor="w",
         )
         lbl_sub.pack(fill="x")
@@ -247,7 +247,7 @@ class MetricCard(tk.Frame):
 
 
 class GoalCard(tk.Frame):
-    """Interactive Goal summary card with circular progress ring, badges, and actions."""
+    """Streamlined, clickable Goal card with progress ring and clean metadata."""
 
     def __init__(
         self,
@@ -264,67 +264,54 @@ class GoalCard(tk.Frame):
             highlightbackground=colors["border"],
             highlightthickness=1,
             bd=0,
+            cursor="hand2",
         )
         self.goal = goal
         self.colors = colors
 
-        # Left color accent strip
         strip_color = goal.color or colors["accent"]
-        strip = tk.Frame(self, bg=strip_color, width=5)
+        strip = tk.Frame(self, bg=strip_color, width=4)
         strip.pack(side="left", fill="y")
 
-        content = tk.Frame(self, bg=colors["surface"], padx=16, pady=14)
+        content = tk.Frame(self, bg=colors["surface"], padx=18, pady=16)
         content.pack(side="left", fill="both", expand=True)
 
-        # Top row: Category pill + Priority badge + Status badge
-        top_row = tk.Frame(content, bg=colors["surface"])
-        top_row.pack(fill="x")
-
-        cat_lbl = tk.Label(
-            top_row,
-            text=f" {goal.category} ",
-            bg=colors["surface_alt"],
-            fg=strip_color,
-            font=("Segoe UI", 8, "bold"),
-            padx=6,
-            pady=2,
-        )
-        cat_lbl.pack(side="left")
-
-        prio_colors = {
-            "high": colors["danger"],
-            "medium": colors["warning"],
-            "low": colors["info"],
-        }
-        p_col = prio_colors.get(goal.priority, colors["text_muted"])
-        prio_lbl = tk.Label(
-            top_row,
-            text=f"• {goal.priority.upper()}",
-            bg=colors["surface"],
-            fg=p_col,
-            font=("Segoe UI", 8, "bold"),
-            padx=8,
-        )
-        prio_lbl.pack(side="left")
-
-        if goal.status != "active":
-            st_lbl = tk.Label(
-                top_row,
-                text=goal.status.upper(),
-                bg=colors["surface_alt"],
-                fg=colors["text_muted"],
-                font=("Segoe UI", 8, "bold"),
-                padx=6,
-                pady=1,
-            )
-            st_lbl.pack(side="right")
-
-        # Middle row: Title & Description on left, Circular Progress Ring on right
-        mid_row = tk.Frame(content, bg=colors["surface"], pady=8)
+        # Main row: Left info + Right circular ring
+        mid_row = tk.Frame(content, bg=colors["surface"])
         mid_row.pack(fill="x")
 
         text_col = tk.Frame(mid_row, bg=colors["surface"])
-        text_col.pack(side="left", fill="both", expand=True, padx=(0, 12))
+        text_col.pack(side="left", fill="both", expand=True, padx=(0, 14))
+
+        # Subtle top metadata line
+        meta_top = tk.Frame(text_col, bg=colors["surface"])
+        meta_top.pack(fill="x", pady=(0, 4))
+
+        cat_lbl = tk.Label(
+            meta_top,
+            text=goal.category,
+            bg=colors["surface"],
+            fg=strip_color,
+            font=("Segoe UI", 8, "bold"),
+        )
+        cat_lbl.pack(side="left")
+
+        dl_text, dl_state = format_relative_deadline(
+            goal.deadline, is_completed=(goal.status == "completed")
+        )
+        dl_fg = (
+            colors.get(dl_state, colors["text_muted"])
+            if dl_state in ("danger", "warning")
+            else colors["text_muted"]
+        )
+        dl_lbl = tk.Label(
+            meta_top,
+            text=f"  •  {dl_text}",
+            bg=colors["surface"],
+            fg=dl_fg,
+            font=("Segoe UI", 8),
+        )
+        dl_lbl.pack(side="left")
 
         title_lbl = tk.Label(
             text_col,
@@ -334,28 +321,19 @@ class GoalCard(tk.Frame):
             font=("Segoe UI", 12, "bold"),
             anchor="w",
             justify="left",
-            wraplength=310,
-            cursor="hand2",
+            wraplength=340,
         )
         title_lbl.pack(fill="x")
-        title_lbl.bind("<Button-1>", lambda _e, gid=goal.id: on_open_detail(gid))
 
-        desc_preview = (
-            (goal.description[:95] + "…")
-            if len(goal.description or "") > 95
-            else (goal.description or "No description provided.")
-        )
-        desc_lbl = tk.Label(
+        sub_lbl = tk.Label(
             text_col,
-            text=desc_preview,
+            text=progress.status_label,
             bg=colors["surface"],
             fg=colors["text_muted"],
             font=("Segoe UI", 9),
             anchor="w",
-            justify="left",
-            wraplength=310,
         )
-        desc_lbl.pack(fill="x", pady=(3, 0))
+        sub_lbl.pack(fill="x", pady=(4, 0))
 
         ring_color = (
             colors["positive"]
@@ -364,8 +342,8 @@ class GoalCard(tk.Frame):
         )
         ring = CircularProgressRing(
             mid_row,
-            size=62,
-            thickness=6,
+            size=54,
+            thickness=5,
             percentage=progress.percentage,
             bg_color=colors["surface"],
             track_color=colors["track"],
@@ -374,68 +352,34 @@ class GoalCard(tk.Frame):
         )
         ring.pack(side="right")
 
-        # Progress bar + footer row
         bar = SmoothProgressBar(
             content,
             percentage=progress.percentage,
-            height=6,
+            height=5,
             bg_color=colors["surface"],
             track_color=colors["track"],
             fill_color=ring_color,
         )
-        bar.pack(fill="x", pady=(2, 10))
+        bar.pack(fill="x", pady=(12, 0))
 
-        footer = tk.Frame(content, bg=colors["surface"])
-        footer.pack(fill="x")
+        # Make entire card clickable to open Goal Workspace
+        def _open(_e=None, gid=goal.id) -> None:
+            on_open_detail(gid)
 
-        dl_text, dl_state = format_relative_deadline(
-            goal.deadline, is_completed=(goal.status == "completed")
-        )
-        dl_fg = colors.get(dl_state, colors["text_muted"])
-
-        meta_lbl = tk.Label(
-            footer,
-            text=f"{progress.status_label}   •   {dl_text}",
-            bg=colors["surface"],
-            fg=dl_fg if dl_state in ("danger", "warning") else colors["text_muted"],
-            font=("Segoe UI", 9),
-        )
-        meta_lbl.pack(side="left")
-
-        btn_open = tk.Button(
-            footer,
-            text="Open Workspace →",
-            bg=colors["accent"],
-            fg="#FFFFFF",
-            activebackground=colors["accent_hover"],
-            activeforeground="#FFFFFF",
-            font=("Segoe UI", 9, "bold"),
-            relief="flat",
-            bd=0,
-            padx=10,
-            pady=4,
-            cursor="hand2",
-            command=lambda gid=goal.id: on_open_detail(gid),
-        )
-        btn_open.pack(side="right")
-
-        if on_open_explorer:
-            btn_tree = tk.Button(
-                footer,
-                text="Visual Tree",
-                bg=colors["surface_alt"],
-                fg=colors["text"],
-                activebackground=colors["border"],
-                activeforeground=colors["text"],
-                font=("Segoe UI", 9),
-                relief="flat",
-                bd=0,
-                padx=8,
-                pady=4,
-                cursor="hand2",
-                command=lambda gid=goal.id: on_open_explorer(gid),
-            )
-            btn_tree.pack(side="right", padx=(0, 6))
+        for widget in (
+            self,
+            content,
+            mid_row,
+            text_col,
+            meta_top,
+            cat_lbl,
+            dl_lbl,
+            title_lbl,
+            sub_lbl,
+            ring,
+            bar,
+        ):
+            widget.bind("<Button-1>", _open)
 
 
 class BarChartCanvas(tk.Canvas):

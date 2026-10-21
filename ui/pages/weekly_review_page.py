@@ -1,4 +1,4 @@
-"""Weekly Review and Planning workflow page for GoalOS."""
+"""Streamlined Weekly Review and Planning workflow page with sub-tabs."""
 
 import tkinter as tk
 from typing import Dict
@@ -10,16 +10,21 @@ from ui.components.scrollable import ScrollableFrame
 
 
 class WeeklyReviewPage(tk.Frame):
-    """Guided 5-step Weekly Review workflow and historical review viewer."""
+    """Spacious Weekly Review workflow with a dedicated Past Reviews Archive tab."""
 
     def __init__(self, parent: tk.Widget, controller: AppController) -> None:
         self.controller = controller
         p = controller.colors
         super().__init__(parent, bg=p["bg"])
 
+        self.active_tab = tk.StringVar(value="new")  # 'new' or 'archive'
         self.goal_check_vars: Dict[str, tk.BooleanVar] = {}
         self.scroll = ScrollableFrame(self, bg=p["bg"])
         self.scroll.pack(fill="both", expand=True)
+        self.render()
+
+    def _set_tab(self, tab_key: str) -> None:
+        self.active_tab.set(tab_key)
         self.render()
 
     def render(self) -> None:
@@ -33,62 +38,103 @@ class WeeklyReviewPage(tk.Frame):
         self.goal_check_vars.clear()
 
         summary = self.controller.review_service.get_past_week_summary()
+        reviews = self.controller.review_service.list_reviews()
 
-        # Header
-        header = tk.Frame(container, bg=p["bg"], padx=26, pady=18)
+        # Header + Tab Switcher
+        header = tk.Frame(container, bg=p["bg"], padx=32, pady=20)
         header.pack(fill="x")
 
+        left_h = tk.Frame(header, bg=p["bg"])
+        left_h.pack(side="left")
         tk.Label(
-            header,
-            text="Weekly Review & Next-Week Planning",
+            left_h,
+            text="Weekly Review",
             bg=p["bg"],
             fg=p["text"],
             font=("Segoe UI", 18, "bold"),
             anchor="w",
         ).pack(anchor="w")
         tk.Label(
-            header,
-            text=f"Review Period: {summary['period_start']}  to  {summary['period_end']}   •   Evaluate outcomes, reflect, and lock in next week's priorities.",
+            left_h,
+            text=f"Period: {summary['period_start']}  →  {summary['period_end']}",
             bg=p["bg"],
             fg=p["text_muted"],
-            font=("Segoe UI", 10),
+            font=("Segoe UI", 9),
             anchor="w",
         ).pack(anchor="w")
 
-        # --- STEP 1: Review the Previous Week (Summary Metrics) ---
+        tab_bar = tk.Frame(header, bg=p["surface"], padx=4, pady=4)
+        tab_bar.pack(side="right")
+
+        cur_tab = self.active_tab.get()
+        for key, lbl in [
+            ("new", "✦ Current Week Review"),
+            ("archive", f"📂 Past Reviews ({len(reviews)})"),
+        ]:
+            is_sel = cur_tab == key
+            tk.Button(
+                tab_bar,
+                text=lbl,
+                bg=p["accent"] if is_sel else p["surface_alt"],
+                fg="#FFFFFF" if is_sel else p["text_muted"],
+                font=("Segoe UI", 9, "bold" if is_sel else "normal"),
+                relief="flat",
+                padx=14,
+                pady=5,
+                cursor="hand2",
+                command=lambda k=key: self._set_tab(k),
+            ).pack(side="left", padx=2)
+
+        if cur_tab == "archive":
+            arch_wrap = tk.Frame(container, bg=p["bg"], padx=32)
+            arch_wrap.pack(fill="both", expand=True, pady=(0, 28))
+            if not reviews:
+                tk.Label(
+                    arch_wrap,
+                    text="No saved weekly reviews yet.",
+                    bg=p["bg"],
+                    fg=p["text_muted"],
+                    font=("Segoe UI", 10),
+                    pady=24,
+                ).pack()
+            else:
+                for rev in reviews:
+                    self._build_review_history_card(arch_wrap, rev)
+            return
+
+        # --- Step 1: Past 7 Days Snapshot ---
         step1 = tk.Frame(
             container,
             bg=p["surface"],
             highlightbackground=p["border"],
             highlightthickness=1,
-            padx=20,
-            pady=16,
+            padx=22,
+            pady=18,
         )
-        step1.pack(fill="x", padx=26, pady=(0, 16))
+        step1.pack(fill="x", padx=32, pady=(0, 18))
 
         tk.Label(
             step1,
-            text="STEP 1: PAST 7 DAYS EXECUTION SNAPSHOT",
+            text="1. PAST 7 DAYS SNAPSHOT",
             bg=p["surface"],
             fg=p["accent"],
             font=("Segoe UI", 9, "bold"),
             anchor="w",
-        ).pack(fill="x", pady=(0, 10))
+        ).pack(fill="x", pady=(0, 12))
 
         stats_grid = tk.Frame(step1, bg=p["surface"])
         stats_grid.pack(fill="x")
-        for i in range(5):
+        for i in range(4):
             stats_grid.columnconfigure(i, weight=1, uniform="rev_stat")
 
         stat_items = [
             ("Tasks Completed", len(summary["completed_tasks"]), p["positive"]),
-            ("Still Incomplete", len(summary["incomplete_tasks"]), p["info"]),
             ("Milestones Finished", len(summary["completed_milestones"]), p["accent"]),
+            ("Still Open", len(summary["incomplete_tasks"]), p["info"]),
             ("Missed Deadlines", len(summary["missed_deadlines"]), p["danger"]),
-            ("Stagnant Goals", len(summary["stagnant_goals"]), p["warning"]),
         ]
         for idx, (lbl, val, col) in enumerate(stat_items):
-            box = tk.Frame(stats_grid, bg=p["surface_alt"], padx=12, pady=10)
+            box = tk.Frame(stats_grid, bg=p["surface_alt"], padx=14, pady=10)
             box.grid(row=0, column=idx, sticky="nsew", padx=4)
             tk.Label(
                 box,
@@ -105,149 +151,94 @@ class WeeklyReviewPage(tk.Frame):
                 font=("Segoe UI", 8, "bold"),
             ).pack(anchor="w")
 
-        if summary["stagnant_goals"] or summary["missed_deadlines"]:
-            notes_row = tk.Frame(step1, bg=p["surface"], pady=8)
-            notes_row.pack(fill="x")
-            if summary["stagnant_goals"]:
-                stag_names = ", ".join(g.title for g in summary["stagnant_goals"])
-                tk.Label(
-                    notes_row,
-                    text=f"• Goals with 0 completed tasks this week: {stag_names}",
-                    bg=p["surface"],
-                    fg=p["warning"],
-                    font=("Segoe UI", 9),
-                    anchor="w",
-                ).pack(fill="x")
-            if summary["missed_deadlines"]:
-                missed_names = ", ".join(
-                    t.title for t in summary["missed_deadlines"][:4]
-                )
-                tk.Label(
-                    notes_row,
-                    text=f"• Overdue tasks needing attention: {missed_names}",
-                    bg=p["surface"],
-                    fg=p["danger"],
-                    font=("Segoe UI", 9),
-                    anchor="w",
-                ).pack(fill="x")
-
-        # --- Main Two-Column Area: Left = Steps 2–5 Form, Right = Past Reviews History ---
-        split = tk.Frame(container, bg=p["bg"], padx=26)
-        split.pack(fill="both", expand=True, pady=(0, 26))
-        split.columnconfigure(0, weight=6)
-        split.columnconfigure(1, weight=4)
-
+        # --- Step 2 & 3: Reflection & Next Week Priorities ---
         form_card = tk.Frame(
-            split,
+            container,
             bg=p["surface"],
             highlightbackground=p["border"],
             highlightthickness=1,
-            padx=20,
-            pady=16,
+            padx=24,
+            pady=20,
         )
-        form_card.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        form_card.pack(fill="x", padx=32, pady=(0, 28))
 
-        hist_card = tk.Frame(
-            split,
-            bg=p["surface"],
-            highlightbackground=p["border"],
-            highlightthickness=1,
-            padx=20,
-            pady=16,
-        )
-        hist_card.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
-
-        # --- STEP 2: Reflect ---
         tk.Label(
             form_card,
-            text="STEP 2: WEEKLY REFLECTION",
+            text="2. REFLECT & PLAN NEXT WEEK",
             bg=p["surface"],
             fg=p["accent"],
             font=("Segoe UI", 9, "bold"),
             anchor="w",
-        ).pack(fill="x", pady=(0, 8))
+        ).pack(fill="x", pady=(0, 10))
 
-        self.txt_well = self._add_prompt(
-            form_card, "1. What went well this week?"
-        )
+        grid_prompts = tk.Frame(form_card, bg=p["surface"])
+        grid_prompts.pack(fill="x")
+        grid_prompts.columnconfigure(0, weight=1, uniform="pr")
+        grid_prompts.columnconfigure(1, weight=1, uniform="pr")
+
+        c_left = tk.Frame(grid_prompts, bg=p["surface"])
+        c_left.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        c_right = tk.Frame(grid_prompts, bg=p["surface"])
+        c_right.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
+
+        self.txt_well = self._add_prompt(c_left, "What went well this week?")
         self.txt_diff = self._add_prompt(
-            form_card, "2. What was difficult or blocked progress?"
+            c_right, "What was difficult or blocked progress?"
         )
-        self.txt_learn = self._add_prompt(
-            form_card, "3. What did I learn?"
-        )
+        self.txt_learn = self._add_prompt(c_left, "What did I learn?")
         self.txt_change = self._add_prompt(
-            form_card, "4. What should change next week?"
+            c_right, "What should change next week?"
         )
 
-        # --- STEP 3: Select Priority Goals for Next Week ---
+        # Priority Goals Checkboxes
         tk.Label(
             form_card,
-            text="STEP 3: SELECT PRIORITY GOALS FOR NEXT WEEK",
+            text="Focus Goals for Next Week:",
             bg=p["surface"],
-            fg=p["accent"],
+            fg=p["text"],
             font=("Segoe UI", 9, "bold"),
             anchor="w",
         ).pack(fill="x", pady=(14, 6))
 
-        active_goals = self.controller.goal_repo.list_all(status="active")
-        if not active_goals:
-            tk.Label(
-                form_card,
-                text="No active goals available.",
+        goals_row = tk.Frame(form_card, bg=p["surface"])
+        goals_row.pack(fill="x")
+        for g in self.controller.goal_repo.list_all(status="active"):
+            var = tk.BooleanVar(value=True)
+            self.goal_check_vars[g.id] = var
+            tk.Checkbutton(
+                goals_row,
+                text=f" {g.title}",
+                variable=var,
                 bg=p["surface"],
-                fg=p["text_muted"],
+                fg=p["text"],
+                selectcolor=p["surface_alt"],
+                activebackground=p["surface"],
+                activeforeground=p["text"],
                 font=("Segoe UI", 9),
-            ).pack(anchor="w")
-        else:
-            for g in active_goals:
-                var = tk.BooleanVar(value=True)
-                self.goal_check_vars[g.id] = var
-                cb = tk.Checkbutton(
-                    form_card,
-                    text=f" {g.title} ({g.category} • {g.priority.upper()})",
-                    variable=var,
-                    bg=p["surface"],
-                    fg=p["text"],
-                    selectcolor=p["surface_alt"],
-                    activebackground=p["surface"],
-                    activeforeground=p["text"],
-                    font=("Segoe UI", 9),
-                    anchor="w",
-                )
-                cb.pack(fill="x", pady=1)
+            ).pack(side="left", padx=(0, 16))
 
-        # --- STEP 4: Plan Tasks & Commitments ---
-        step4_head = tk.Frame(form_card, bg=p["surface"])
-        step4_head.pack(fill="x", pady=(14, 4))
-        tk.Label(
-            step4_head,
-            text="STEP 4: NEXT WEEK'S KEY COMMITMENTS & TASKS",
-            bg=p["surface"],
-            fg=p["accent"],
-            font=("Segoe UI", 9, "bold"),
+        self.txt_priorities = self._add_prompt(
+            form_card, "Top 3 concrete commitments for next week:"
+        )
+
+        footer_btns = tk.Frame(form_card, bg=p["surface"], pady=10)
+        footer_btns.pack(fill="x")
+
+        tk.Button(
+            footer_btns,
+            text="+ Schedule New Task",
+            bg=p["surface_alt"],
+            fg=p["text"],
+            font=("Segoe UI", 9),
+            relief="flat",
+            padx=14,
+            pady=7,
+            cursor="hand2",
+            command=lambda: TaskFormDialog(self, self.controller),
         ).pack(side="left")
 
         tk.Button(
-            step4_head,
-            text="+ Schedule New Task",
-            bg=p["surface_alt"],
-            fg=p["accent"],
-            font=("Segoe UI", 8, "bold"),
-            relief="flat",
-            padx=8,
-            pady=2,
-            cursor="hand2",
-            command=lambda: TaskFormDialog(self, self.controller),
-        ).pack(side="right")
-
-        self.txt_priorities = self._add_prompt(
-            form_card, "Outline your top 3 concrete outcomes for next week:"
-        )
-
-        # --- STEP 5: Save Review ---
-        tk.Button(
-            form_card,
+            footer_btns,
             text="✦ Save Weekly Review",
             bg=p["accent"],
             fg="#FFFFFF",
@@ -256,33 +247,10 @@ class WeeklyReviewPage(tk.Frame):
             font=("Segoe UI", 10, "bold"),
             relief="flat",
             padx=20,
-            pady=8,
+            pady=7,
             cursor="hand2",
             command=lambda s=summary: self._save_review(s),
-        ).pack(anchor="e", pady=(14, 0))
-
-        # --- Right Column: Previous Weekly Reviews ---
-        tk.Label(
-            hist_card,
-            text="PAST WEEKLY REVIEWS ARCHIVE",
-            bg=p["surface"],
-            fg=p["accent"],
-            font=("Segoe UI", 9, "bold"),
-            anchor="w",
-        ).pack(fill="x", pady=(0, 10))
-
-        reviews = self.controller.review_service.list_reviews()
-        if not reviews:
-            tk.Label(
-                hist_card,
-                text="No saved weekly reviews yet.",
-                bg=p["surface"],
-                fg=p["text_muted"],
-                font=("Segoe UI", 9),
-            ).pack(anchor="w")
-        else:
-            for rev in reviews:
-                self._build_review_history_card(hist_card, rev)
+        ).pack(side="right")
 
     def _add_prompt(self, parent: tk.Widget, label: str) -> tk.Text:
         p = self.controller.colors
@@ -293,10 +261,10 @@ class WeeklyReviewPage(tk.Frame):
             fg=p["text"],
             font=("Segoe UI", 9, "bold"),
             anchor="w",
-        ).pack(fill="x", pady=(6, 3))
+        ).pack(fill="x", pady=(8, 4))
         txt = tk.Text(
             parent,
-            height=2,
+            height=3,
             bg=p["input_bg"],
             fg=p["text"],
             insertbackground=p["text"],
@@ -305,8 +273,8 @@ class WeeklyReviewPage(tk.Frame):
             highlightthickness=1,
             relief="flat",
             font=("Segoe UI", 9),
-            padx=6,
-            pady=5,
+            padx=8,
+            pady=6,
         )
         txt.pack(fill="x")
         return txt
@@ -325,9 +293,8 @@ class WeeklyReviewPage(tk.Frame):
             planned_priorities=self.txt_priorities.get("1.0", "end"),
             selected_goal_ids=selected_gids,
         )
-        self.controller.show_toast(
-            "Saved Weekly Review to local database!", "positive"
-        )
+        self.controller.show_toast("Saved Weekly Review!", "positive")
+        self.active_tab.set("archive")
         self.controller.notify_data_changed("review_saved")
 
     def _build_review_history_card(
@@ -336,67 +303,38 @@ class WeeklyReviewPage(tk.Frame):
         p = self.controller.colors
         box = tk.Frame(
             parent,
-            bg=p["surface_alt"],
+            bg=p["surface"],
             highlightbackground=p["border"],
             highlightthickness=1,
-            padx=14,
-            pady=10,
+            padx=20,
+            pady=16,
         )
-        box.pack(fill="x", pady=(0, 10))
+        box.pack(fill="x", pady=(0, 12))
 
         tk.Label(
             box,
-            text=f"Week: {rev.period_start} → {rev.period_end}",
-            bg=p["surface_alt"],
+            text=f"Week of {rev.period_start}  →  {rev.period_end}",
+            bg=p["surface"],
             fg=p["accent"],
-            font=("Segoe UI", 9, "bold"),
+            font=("Segoe UI", 11, "bold"),
             anchor="w",
-        ).pack(fill="x")
+        ).pack(fill="x", pady=(0, 6))
 
-        if rev.went_well:
-            tk.Label(
-                box,
-                text=f"✓ Went well: {rev.went_well}",
-                bg=p["surface_alt"],
-                fg=p["text"],
-                font=("Segoe UI", 8),
-                anchor="w",
-                justify="left",
-                wraplength=340,
-            ).pack(fill="x", pady=(4, 2))
-
-        if rev.challenges:
-            tk.Label(
-                box,
-                text=f"⚠ Challenges: {rev.challenges}",
-                bg=p["surface_alt"],
-                fg=p["text_muted"],
-                font=("Segoe UI", 8),
-                anchor="w",
-                justify="left",
-                wraplength=340,
-            ).pack(fill="x", pady=2)
-
-        if rev.next_week_changes:
-            tk.Label(
-                box,
-                text=f"↻ Adjustments: {rev.next_week_changes}",
-                bg=p["surface_alt"],
-                fg=p["text_muted"],
-                font=("Segoe UI", 8),
-                anchor="w",
-                justify="left",
-                wraplength=340,
-            ).pack(fill="x", pady=2)
-
-        if rev.planned_priorities:
-            tk.Label(
-                box,
-                text=f"★ Priorities:\n{rev.planned_priorities}",
-                bg=p["surface_alt"],
-                fg=p["positive"],
-                font=("Segoe UI", 8, "bold"),
-                anchor="w",
-                justify="left",
-                wraplength=340,
-            ).pack(fill="x", pady=(4, 0))
+        for label, text in [
+            ("Went well:", rev.went_well),
+            ("Challenges:", rev.challenges),
+            ("Lessons:", rev.lessons_learned),
+            ("Next week adjustments:", rev.next_week_changes),
+            ("Priorities:", rev.planned_priorities),
+        ]:
+            if text:
+                tk.Label(
+                    box,
+                    text=f"{label}  {text}",
+                    bg=p["surface"],
+                    fg=p["text"],
+                    font=("Segoe UI", 9),
+                    anchor="w",
+                    justify="left",
+                    wraplength=880,
+                ).pack(fill="x", pady=2)
