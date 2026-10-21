@@ -1,0 +1,4 @@
+# GoalOS uses 100% Python Standard Library (tkinter, sqlite3, datetime, uuid, json, unittest).
+# No third-party pip packages are required!
+# On Ubuntu/Debian Linux, ensure python3-tk is installed via apt:
+#   sudo apt-get install python3-tk
