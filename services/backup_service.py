@@ -102,8 +102,20 @@ class BackupService:
             f"Restored database from {Path(backup_path).name}",
         )
 
+    def reset_sample_data(self) -> None:
+        """Clears existing records and seeds fresh sample data."""
+        with self.db.transaction() as conn:
+            conn.execute("DELETE FROM review_goals;")
+            conn.execute("DELETE FROM weekly_reviews;")
+            conn.execute("DELETE FROM tasks;")
+            conn.execute("DELETE FROM projects;")
+            conn.execute("DELETE FROM milestones;")
+            conn.execute("DELETE FROM goals;")
+            conn.execute("DELETE FROM activity_log;")
+        self.seed_sample_data_if_empty(force=True)
+
     def seed_sample_data_if_empty(self, force: bool = False) -> bool:
-        """Populates realistic sample goals, milestones, projects, tasks, and reviews."""
+        """Populates clean sample goals, milestones, projects, tasks, and reviews."""
         existing_goals = self.goal_repo.list_all()
         if existing_goals and not force:
             return False
@@ -112,208 +124,207 @@ class BackupService:
         d = lambda offset: (today + timedelta(days=offset)).isoformat()
         ts = lambda offset: f"{d(offset)}T14:30:00"
 
-        # Goal 1: Master Python & Software Engineering Portfolio
+        # Goal 1: Build Python Desktop Application
         g1 = self.goal_service.create_goal(
-            title="Build a Full-Stack & Desktop Python Portfolio",
-            description="Design, architect, and ship three production-grade Python applications with automated tests and clean documentation.",
-            category="Career",
-            start_date=d(-25),
-            deadline=d(35),
+            title="Build Python Desktop Application",
+            description="Design and implement GoalOS using Python, Tkinter, and SQLite.",
+            category="Projects",
+            start_date=d(-7),
+            deadline=d(7),
             priority="high",
-            target_value=3,
-            target_unit="projects",
+            target_value=1,
+            target_unit="app",
             color="#6366F1",
         )
         m1_1 = self.goal_service.create_milestone(
             goal_id=g1.id,
-            title="Phase 1: Core Architecture & Database Layer",
-            description="Establish clean layered architecture, SQLite schema, and unit test suite.",
-            start_date=d(-25),
-            deadline=d(-5),
+            title="Database & Core Services",
+            description="SQLite schema, repositories, and progress engine.",
+            start_date=d(-7),
+            deadline=d(-1),
         )
         p1_1 = self.goal_service.create_project(
             milestone_id=m1_1.id,
-            title="Implement SQLite Persistence & Repositories",
-            description="Create normalized tables, foreign keys, and CRUD repositories.",
-            start_date=d(-25),
-            deadline=d(-7),
+            title="SQLite Storage Layer",
+            description="Normalized tables and CRUD repositories.",
+            start_date=d(-7),
+            deadline=d(-1),
             priority="high",
         )
         t1 = self.task_service.create_task(
-            p1_1.id, "Design normalized SQLite schema with foreign keys", due_date=d(-14), scheduled_date=d(-15), estimated_minutes=60, priority="high"
+            p1_1.id, "Create SQLite schema and tables", due_date=d(-4), scheduled_date=d(-4), estimated_minutes=45, priority="high"
         )
-        self.task_service.complete_task(t1.id, completed_at=ts(-14))
+        self.task_service.complete_task(t1.id, completed_at=ts(-4))
 
         t2 = self.task_service.create_task(
-            p1_1.id, "Implement Goal, Milestone, Project, and Task repositories", due_date=d(-8), scheduled_date=d(-9), estimated_minutes=90, priority="high"
+            p1_1.id, "Implement progress calculation service", due_date=d(-2), scheduled_date=d(-2), estimated_minutes=60, priority="high"
         )
-        self.task_service.complete_task(t2.id, completed_at=ts(-8))
-
-        t3 = self.task_service.create_task(
-            p1_1.id, "Write unit tests for progress and recommendation engines", due_date=d(-4), scheduled_date=d(-5), estimated_minutes=45, priority="medium"
-        )
-        self.task_service.complete_task(t3.id, completed_at=ts(-4))
+        self.task_service.complete_task(t2.id, completed_at=ts(-2))
 
         m1_2 = self.goal_service.create_milestone(
             goal_id=g1.id,
-            title="Phase 2: Interactive Tkinter Frontend & Canvas Visualizers",
-            description="Build custom Canvas charts, hierarchical node tree, and responsive dark/light themes.",
-            start_date=d(-5),
-            deadline=d(12),
+            title="Tkinter Frontend Interface",
+            description="Dashboard, Goal Explorer, and Canvas charts.",
+            start_date=d(0),
+            deadline=d(6),
         )
         p1_2 = self.goal_service.create_project(
             milestone_id=m1_2.id,
-            title="Develop GoalOS Desktop Interface",
-            description="Implement Dashboard, Goal Explorer Canvas, Task Planner, and Analytics.",
-            start_date=d(-5),
-            deadline=d(10),
+            title="UI Pages & Canvas Widgets",
+            description="Build main pages and custom Canvas components.",
+            start_date=d(0),
+            deadline=d(6),
             priority="high",
         )
-        t4 = self.task_service.create_task(
-            p1_2.id, "Build custom Canvas progress rings and interactive goal cards", due_date=d(-2), scheduled_date=d(-2), estimated_minutes=60, priority="high"
+        t3 = self.task_service.create_task(
+            p1_2.id, "Build Dashboard and Goal Cards", due_date=d(-1), scheduled_date=d(-1), estimated_minutes=50, priority="high"
         )
-        self.task_service.complete_task(t4.id, completed_at=ts(-2))
+        self.task_service.complete_task(t3.id, completed_at=ts(-1))
 
-        t5 = self.task_service.create_task(
-            p1_2.id, "Implement interactive zoom/pan Goal Explorer node graph", due_date=d(0), scheduled_date=d(0), estimated_minutes=75, priority="high"
+        t4 = self.task_service.create_task(
+            p1_2.id, "Design Goal Explorer hierarchy canvas", due_date=d(1), scheduled_date=d(0), estimated_minutes=60, priority="high"
         )
         self.task_service.update_task(
-            t5.id, t5.title, t5.description, due_date=t5.due_date, scheduled_date=t5.scheduled_date, estimated_minutes=75, priority="high", status="in_progress"
+            t4.id, t4.title, t4.description, due_date=t4.due_date, scheduled_date=t4.scheduled_date, estimated_minutes=60, priority="high", status="in_progress"
         )
 
         self.task_service.create_task(
-            p1_2.id, "Add Gantt timeline canvas and deadline performance charts", due_date=d(2), scheduled_date=d(1), estimated_minutes=60, priority="medium"
-        )
-        self.task_service.create_task(
-            p1_2.id, "Polish dark/light theme switcher and keyboard shortcuts", due_date=d(5), scheduled_date=d(4), estimated_minutes=45, priority="low"
+            p1_2.id, "Test 7-day timeline and analytics charts", due_date=d(3), scheduled_date=d(2), estimated_minutes=45, priority="medium"
         )
 
-        m1_3 = self.goal_service.create_milestone(
-            goal_id=g1.id,
-            title="Phase 3: Documentation & Portfolio Showcase",
-            description="Record walkthrough demo and publish comprehensive technical README.",
-            start_date=d(13),
-            deadline=d(35),
-        )
-        p1_3 = self.goal_service.create_project(
-            milestone_id=m1_3.id,
-            title="Prepare Final Release Package",
-            description="Package installation guide, screenshots, and architecture notes.",
-            start_date=d(13),
-            deadline=d(30),
-            priority="medium",
-        )
-        self.task_service.create_task(
-            p1_3.id, "Write architecture documentation and user guide", due_date=d(18), scheduled_date=d(15), estimated_minutes=60, priority="medium"
-        )
-
-        # Goal 2: Academic / Algorithms Mastery
+        # Goal 2: APP (Advanced Programming Practice)
         g2 = self.goal_service.create_goal(
-            title="Complete Advanced Algorithms & Data Structures Prep",
-            description="Master graph algorithms, dynamic programming, and system design fundamentals before finals.",
+            title="APP",
+            description="Advanced Programming Practice — Multi-paradigm programming across Java and Python.",
             category="Education",
-            start_date=d(-15),
-            deadline=d(21),
+            start_date=d(-6),
+            deadline=d(7),
             priority="high",
-            target_value=50,
-            target_unit="problems",
+            target_value=5,
+            target_unit="units",
             color="#10B981",
         )
         m2_1 = self.goal_service.create_milestone(
             goal_id=g2.id,
-            title="Graph Theory & Shortest Path Mastery",
-            description="Cover BFS, DFS, Dijkstra, A*, and Topological Sort.",
-            start_date=d(-15),
-            deadline=d(4),
+            title="Unit 1 & 2: Imperative & Java OOP Paradigms",
+            description="Programming language theory, Bohm-Jacopini theorem, and Java OOP.",
+            start_date=d(-6),
+            deadline=d(-1),
         )
         p2_1 = self.goal_service.create_project(
             milestone_id=m2_1.id,
-            title="Graph Problem Set & Implementations",
-            description="Solve 15 core graph traversal and shortest-path problems.",
-            start_date=d(-15),
-            deadline=d(4),
+            title="Procedural & Object-Oriented Java",
+            description="Classes, inheritance, polymorphism, interfaces, and packages.",
+            start_date=d(-6),
+            deadline=d(-1),
             priority="high",
         )
         t2_1 = self.task_service.create_task(
-            p2_1.id, "Implement Dijkstra and A* priority queue templates", due_date=d(-5), scheduled_date=d(-5), estimated_minutes=50, priority="high"
+            p2_1.id, "Study Bohm-Jacopini theorem & paradigm hierarchy", due_date=d(-4), scheduled_date=d(-4), estimated_minutes=40, priority="high"
         )
-        self.task_service.complete_task(t2_1.id, completed_at=ts(-3))  # Completed 2 days late!
+        self.task_service.complete_task(t2_1.id, completed_at=ts(-4))
 
-        self.task_service.create_task(
-            p2_1.id, "Solve 5 topological sort & cycle detection problems", due_date=d(-1), scheduled_date=d(-1), estimated_minutes=45, priority="high"
-        )  # Overdue by 1 day!
-
-        self.task_service.create_task(
-            p2_1.id, "Review Minimum Spanning Tree (Kruskal & Prim)", due_date=d(3), scheduled_date=d(2), estimated_minutes=40, priority="medium"
+        t2_2 = self.task_service.create_task(
+            p2_1.id, "Implement Java OOP classes, interfaces, and packages", due_date=d(-2), scheduled_date=d(-2), estimated_minutes=50, priority="high"
         )
+        self.task_service.complete_task(t2_2.id, completed_at=ts(-2))
 
         m2_2 = self.goal_service.create_milestone(
             goal_id=g2.id,
-            title="Dynamic Programming Patterns",
-            description="Knapsack, LCS, interval DP, and state compression.",
-            start_date=d(5),
-            deadline=d(21),
+            title="Unit 3 & 4: Concurrent Java & Pythonic Paradigms",
+            description="Multithreading, JDBC, Java Swing MVC, functional Python, and TCP/UDP sockets.",
+            start_date=d(-1),
+            deadline=d(4),
         )
         p2_2 = self.goal_service.create_project(
             milestone_id=m2_2.id,
-            title="DP Pattern Drills",
-            description="Practice memoization and bottom-up tabulation.",
-            start_date=d(5),
-            deadline=d(20),
-            priority="medium",
+            title="Multithreading, JDBC & Functional Python",
+            description="Practice concurrent threads, MySQL connectivity, and higher-order functions.",
+            start_date=d(-1),
+            deadline=d(4),
+            priority="high",
         )
-        self.task_service.create_task(
-            p2_2.id, "Complete 1D and 2D grid DP exercises", due_date=d(9), scheduled_date=d(6), estimated_minutes=60, priority="medium"
+        t2_3 = self.task_service.create_task(
+            p2_2.id, "Practice Java multithreading and JDBC MySQL queries", due_date=d(1), scheduled_date=d(0), estimated_minutes=45, priority="high"
+        )
+        self.task_service.update_task(
+            t2_3.id, t2_3.title, t2_3.description, due_date=t2_3.due_date, scheduled_date=t2_3.scheduled_date, estimated_minutes=45, priority="high", status="in_progress"
         )
 
-        # Goal 3: Health & Endurance Routine
+        self.task_service.create_task(
+            p2_2.id, "Write pure higher-order functions and TCP/UDP client-server sockets", due_date=d(3), scheduled_date=d(2), estimated_minutes=50, priority="medium"
+        )
+
+        m2_3 = self.goal_service.create_milestone(
+            goal_id=g2.id,
+            title="Unit 5: Formal, Symbolic & Event-Driven Paradigm",
+            description="DFA/NFA finite automata, SymPy symbolic algebra, and Tkinter event-driven GUI.",
+            start_date=d(2),
+            deadline=d(7),
+        )
+        p2_3 = self.goal_service.create_project(
+            milestone_id=m2_3.id,
+            title="Automata, SymPy & Tkinter Dissertation",
+            description="Implement finite automata, symbolic calculus, and event handlers in Tkinter.",
+            start_date=d(2),
+            deadline=d(7),
+            priority="high",
+        )
+        self.task_service.create_task(
+            p2_3.id, "Implement DFA/NFA automata and SymPy algebraic expressions", due_date=d(5), scheduled_date=d(4), estimated_minutes=45, priority="medium"
+        )
+        self.task_service.create_task(
+            p2_3.id, "Develop Python Tkinter event-driven project dissertation", due_date=d(6), scheduled_date=d(5), estimated_minutes=60, priority="high"
+        )
+
+        # Goal 3: Daily Fitness & Running Routine
         g3 = self.goal_service.create_goal(
-            title="10K Endurance & Mobility Conditioning",
-            description="Build sustainable aerobic base, strength routine, and consistent sleep schedule.",
+            title="5K Running & Fitness Routine",
+            description="Maintain consistent morning runs and stretching sessions.",
             category="Health and Wellness",
-            start_date=d(-10),
-            deadline=d(45),
+            start_date=d(-6),
+            deadline=d(7),
             priority="medium",
-            target_value=10,
+            target_value=5,
             target_unit="km",
             color="#F59E0B",
         )
         m3_1 = self.goal_service.create_milestone(
             goal_id=g3.id,
-            title="Base Mileage & Mobility Foundation",
-            description="Complete 3 weekly runs and daily 15-minute mobility sessions.",
-            start_date=d(-10),
-            deadline=d(14),
+            title="Weekly Running Target",
+            description="Complete 3 runs this week.",
+            start_date=d(-6),
+            deadline=d(6),
         )
         p3_1 = self.goal_service.create_project(
             milestone_id=m3_1.id,
-            title="Weekly Conditioning Block",
-            description="Structured aerobic runs + core stability.",
-            start_date=d(-10),
-            deadline=d(14),
+            title="Morning Runs",
+            description="Cardio and mobility sessions.",
+            start_date=d(-6),
+            deadline=d(6),
             priority="medium",
         )
         t3_1 = self.task_service.create_task(
-            p3_1.id, "Complete 5K tempo run and log splits", due_date=d(-1), scheduled_date=d(-1), estimated_minutes=35, priority="medium"
+            p3_1.id, "Complete 3K morning run", due_date=d(-1), scheduled_date=d(-1), estimated_minutes=30, priority="medium"
         )
         self.task_service.complete_task(t3_1.id, completed_at=ts(-1))
 
         self.task_service.create_task(
-            p3_1.id, "20-minute full-body mobility & hip opener routine", due_date=d(0), scheduled_date=d(0), estimated_minutes=20, priority="medium"
+            p3_1.id, "20-minute mobility and stretching", due_date=d(0), scheduled_date=d(0), estimated_minutes=20, priority="medium"
         )
         self.task_service.create_task(
-            p3_1.id, "Weekend 7K long slow distance run", due_date=d(4), scheduled_date=d(3), estimated_minutes=50, priority="low"
+            p3_1.id, "Weekend 5K endurance run", due_date=d(4), scheduled_date=d(4), estimated_minutes=40, priority="low"
         )
 
         # Sample Weekly Review
         self.review_service.save_weekly_review(
             period_start=d(-7),
             period_end=d(0),
-            went_well="Completed the entire SQLite persistence layer and core progress calculation engine ahead of schedule.",
-            challenges="Underestimated the time needed for graph algorithm practice problems, causing one task to slip by a day.",
-            lessons_learned="Breaking projects into 30–60 minute tasks makes daily execution much smoother.",
-            next_week_changes="Time-block 45 minutes every morning for high-priority tasks before checking messages.",
-            planned_priorities="1. Finish Goal Explorer Canvas view\n2. Clear overdue topological sort practice set\n3. Maintain 3x weekly runs",
+            went_well="Completed the database schema and core progress calculation service.",
+            challenges="Balancing exam revision with project coding.",
+            lessons_learned="Breaking projects into 30–60 minute tasks keeps daily progress steady.",
+            next_week_changes="Finish the remaining UI testing tasks early in the week.",
+            planned_priorities="1. Finish Goal Explorer canvas\n2. Solve graph practice sheet\n3. Complete weekend 5K run",
             selected_goal_ids=[g1.id, g2.id],
         )
 

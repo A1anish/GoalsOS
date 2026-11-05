@@ -247,7 +247,7 @@ class MetricCard(tk.Frame):
 
 
 class GoalCard(tk.Frame):
-    """Streamlined, clickable Goal card with progress ring and clean metadata."""
+    """Streamlined, clickable Goal card showing Category, Title, and optional Circular Progress Ring."""
 
     def __init__(
         self,
@@ -257,6 +257,7 @@ class GoalCard(tk.Frame):
         colors: Dict[str, str],
         on_open_detail: Callable[[str], None],
         on_open_explorer: Optional[Callable[[str], None]] = None,
+        show_percentage: bool = True,
     ) -> None:
         super().__init__(
             parent,
@@ -273,45 +274,24 @@ class GoalCard(tk.Frame):
         strip = tk.Frame(self, bg=strip_color, width=4)
         strip.pack(side="left", fill="y")
 
-        content = tk.Frame(self, bg=colors["surface"], padx=18, pady=16)
+        content = tk.Frame(self, bg=colors["surface"], padx=18, pady=14)
         content.pack(side="left", fill="both", expand=True)
 
-        # Main row: Left info + Right circular ring
         mid_row = tk.Frame(content, bg=colors["surface"])
         mid_row.pack(fill="x")
 
         text_col = tk.Frame(mid_row, bg=colors["surface"])
-        text_col.pack(side="left", fill="both", expand=True, padx=(0, 14))
-
-        # Subtle top metadata line
-        meta_top = tk.Frame(text_col, bg=colors["surface"])
-        meta_top.pack(fill="x", pady=(0, 4))
+        text_col.pack(side="left", fill="both", expand=True, padx=(0, 14 if show_percentage else 0))
 
         cat_lbl = tk.Label(
-            meta_top,
+            text_col,
             text=goal.category,
             bg=colors["surface"],
             fg=strip_color,
             font=("Segoe UI", 8, "bold"),
+            anchor="w",
         )
-        cat_lbl.pack(side="left")
-
-        dl_text, dl_state = format_relative_deadline(
-            goal.deadline, is_completed=(goal.status == "completed")
-        )
-        dl_fg = (
-            colors.get(dl_state, colors["text_muted"])
-            if dl_state in ("danger", "warning")
-            else colors["text_muted"]
-        )
-        dl_lbl = tk.Label(
-            meta_top,
-            text=f"  •  {dl_text}",
-            bg=colors["surface"],
-            fg=dl_fg,
-            font=("Segoe UI", 8),
-        )
-        dl_lbl.pack(side="left")
+        cat_lbl.pack(fill="x", pady=(0, 4))
 
         title_lbl = tk.Label(
             text_col,
@@ -321,64 +301,36 @@ class GoalCard(tk.Frame):
             font=("Segoe UI", 12, "bold"),
             anchor="w",
             justify="left",
-            wraplength=340,
+            wraplength=340 if show_percentage else 360,
         )
         title_lbl.pack(fill="x")
 
-        sub_lbl = tk.Label(
-            text_col,
-            text=progress.status_label,
-            bg=colors["surface"],
-            fg=colors["text_muted"],
-            font=("Segoe UI", 9),
-            anchor="w",
-        )
-        sub_lbl.pack(fill="x", pady=(4, 0))
+        click_widgets = [self, content, mid_row, text_col, cat_lbl, title_lbl]
 
-        ring_color = (
-            colors["positive"]
-            if progress.percentage >= 100.0
-            else strip_color
-        )
-        ring = CircularProgressRing(
-            mid_row,
-            size=54,
-            thickness=5,
-            percentage=progress.percentage,
-            bg_color=colors["surface"],
-            track_color=colors["track"],
-            fill_color=ring_color,
-            text_color=colors["text"],
-        )
-        ring.pack(side="right")
-
-        bar = SmoothProgressBar(
-            content,
-            percentage=progress.percentage,
-            height=5,
-            bg_color=colors["surface"],
-            track_color=colors["track"],
-            fill_color=ring_color,
-        )
-        bar.pack(fill="x", pady=(12, 0))
+        if show_percentage:
+            ring_color = (
+                colors["positive"]
+                if progress.percentage >= 100.0
+                else strip_color
+            )
+            ring = CircularProgressRing(
+                mid_row,
+                size=54,
+                thickness=5,
+                percentage=progress.percentage,
+                bg_color=colors["surface"],
+                track_color=colors["track"],
+                fill_color=ring_color,
+                text_color=colors["text"],
+            )
+            ring.pack(side="right")
+            click_widgets.append(ring)
 
         # Make entire card clickable to open Goal Workspace
         def _open(_e=None, gid=goal.id) -> None:
             on_open_detail(gid)
 
-        for widget in (
-            self,
-            content,
-            mid_row,
-            text_col,
-            meta_top,
-            cat_lbl,
-            dl_lbl,
-            title_lbl,
-            sub_lbl,
-            ring,
-            bar,
-        ):
+        for widget in click_widgets:
             widget.bind("<Button-1>", _open)
 
 
@@ -674,7 +626,7 @@ class InteractiveGoalTreeCanvas(tk.Frame):
 
         tk.Label(
             toolbar,
-            text="VISUAL HIERARCHY CANVAS   •   Drag to Pan   •   Click Node to Inspect   •   Double-Click Task to Complete",
+            text="GOAL HIERARCHY",
             bg=colors["surface_alt"],
             fg=colors["text_muted"],
             font=("Segoe UI", 8, "bold"),
@@ -1163,9 +1115,9 @@ class GanttTimelineCanvas(tk.Canvas):
             return
 
         today = date.today()
-        win_start = today - timedelta(days=7)
-        win_end = today + timedelta(days=28)
-        total_days = (win_end - win_start).days
+        win_start = today
+        win_end = today + timedelta(days=7)
+        total_days = 7
 
         label_col_w = 250
         pad_right = 24
@@ -1183,26 +1135,27 @@ class GanttTimelineCanvas(tk.Canvas):
         self.create_text(
             14,
             header_h / 2,
-            text="ENTITY / GOAL HIERARCHY",
+            text="TASK / MILESTONE (NEXT 7 DAYS)",
             anchor="w",
             fill=p["text_muted"],
             font=("Segoe UI", 8, "bold"),
         )
 
-        # Draw date ticks every 3 days
-        for d_idx in range(0, total_days + 1, 3):
+        # Draw date ticks for each of the 7 days
+        for d_idx in range(0, total_days + 1):
             cur_d = win_start + timedelta(days=d_idx)
             x = label_col_w + d_idx * day_w
             self.create_line(
                 x, header_h, x, total_h, fill=p["border"], dash=(2, 4)
             )
-            self.create_text(
-                x,
-                header_h / 2,
-                text=cur_d.strftime("%b %d"),
-                fill=p["text_muted"],
-                font=("Segoe UI", 8),
-            )
+            if d_idx < total_days:
+                self.create_text(
+                    x + day_w / 2,
+                    header_h / 2,
+                    text=cur_d.strftime("%a %b %d"),
+                    fill=p["text_muted"],
+                    font=("Segoe UI", 8, "bold"),
+                )
 
         # Draw rows
         for idx, item in enumerate(self.rows):

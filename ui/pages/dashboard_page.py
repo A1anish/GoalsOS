@@ -1,23 +1,22 @@
-"""Clean, spacious Dashboard page for GoalOS with segmented Focus tabs."""
+"""Clean, spacious Dashboard page for GoalOS."""
 
 from datetime import datetime
 import tkinter as tk
 from tkinter import ttk
 
-from models.entities import Recommendation, Task
+from models.entities import Recommendation
 from ui.app_controller import AppController
 from ui.components.canvas_widgets import (
     GoalCard,
     MetricCard,
-    SmoothProgressBar,
 )
-from ui.components.dialogs import GoalFormDialog, TaskFormDialog
+from ui.components.dialogs import GoalFormDialog
 from ui.components.scrollable import ScrollableFrame
-from utils.dates import format_duration, format_relative_deadline, today_iso
+from utils.dates import format_duration
 
 
 class DashboardPage(tk.Frame):
-    """Streamlined landing dashboard combining summary cards, a tabbed Focus workspace,
+    """Streamlined landing dashboard combining summary cards, Next Best Actions,
     and active Goal cards without visual clutter.
     """
 
@@ -26,7 +25,6 @@ class DashboardPage(tk.Frame):
         p = controller.colors
         super().__init__(parent, bg=p["bg"])
 
-        self.focus_tab = tk.StringVar(value="recommended")  # 'recommended', 'today', 'milestones'
         self.category_filter = tk.StringVar(value="All")
         self.scroll = ScrollableFrame(self, bg=p["bg"])
         self.scroll.pack(fill="both", expand=True)
@@ -39,10 +37,6 @@ class DashboardPage(tk.Frame):
         if hr < 17:
             return "Good afternoon"
         return "Good evening"
-
-    def _switch_focus_tab(self, tab_key: str) -> None:
-        self.focus_tab.set(tab_key)
-        self.render()
 
     def render(self) -> None:
         p = self.controller.colors
@@ -164,7 +158,7 @@ class DashboardPage(tk.Frame):
         right_col = tk.Frame(split, bg=p["bg"])
         right_col.grid(row=0, column=1, sticky="nsew", padx=(14, 0))
 
-        # --- LEFT COLUMN: Unified Focus Panel with Clean Segmented Tabs ---
+        # --- LEFT COLUMN: Next Best Actions ---
         self._build_focus_workspace(left_col)
 
         # --- RIGHT COLUMN: Active Goals List ---
@@ -172,34 +166,18 @@ class DashboardPage(tk.Frame):
 
     def _build_focus_workspace(self, parent: tk.Widget) -> None:
         p = self.controller.colors
-        cur_tab = self.focus_tab.get()
-
-        # Segmented Tab Header
-        tab_bar = tk.Frame(parent, bg=p["bg"])
-        tab_bar.pack(fill="x", pady=(0, 12))
-
-        priorities = self.controller.analytics_service.get_todays_priorities()
         recs = self.controller.recommendation_service.get_recommendations(limit=3)
 
-        tabs = [
-            ("recommended", f"⚡ Next Best Actions ({len(recs)})"),
-            ("today", f"☑ Today's Checklist ({len(priorities)})"),
-            ("milestones", "◷ Milestones & Activity"),
-        ]
-        for key, label in tabs:
-            is_sel = cur_tab == key
-            tk.Button(
-                tab_bar,
-                text=label,
-                bg=p["accent"] if is_sel else p["surface"],
-                fg="#FFFFFF" if is_sel else p["text_muted"],
-                font=("Segoe UI", 9, "bold" if is_sel else "normal"),
-                relief="flat",
-                padx=14,
-                pady=6,
-                cursor="hand2",
-                command=lambda k=key: self._switch_focus_tab(k),
-            ).pack(side="left", padx=(0, 8))
+        head_bar = tk.Frame(parent, bg=p["bg"])
+        head_bar.pack(fill="x", pady=(0, 12))
+
+        tk.Label(
+            head_bar,
+            text=f"⚡ Next Best Actions ({len(recs)})",
+            bg=p["bg"],
+            fg=p["text"],
+            font=("Segoe UI", 13, "bold"),
+        ).pack(side="left")
 
         panel = tk.Frame(
             parent,
@@ -211,189 +189,27 @@ class DashboardPage(tk.Frame):
         )
         panel.pack(fill="both", expand=True)
 
-        if cur_tab == "recommended":
-            tk.Label(
-                panel,
-                text="Recommended tasks to work on right now based on urgency, priority, and readiness:",
-                bg=p["surface"],
-                fg=p["text_muted"],
-                font=("Segoe UI", 9),
-                anchor="w",
-            ).pack(fill="x", pady=(0, 14))
-
-            if not recs:
-                tk.Label(
-                    panel,
-                    text="🎉 You're all caught up! No urgent tasks need immediate attention.",
-                    bg=p["surface"],
-                    fg=p["text"],
-                    font=("Segoe UI", 11),
-                    pady=24,
-                ).pack()
-            else:
-                for rec in recs:
-                    self._build_clean_rec_row(panel, rec)
-
-        elif cur_tab == "today":
-            # Quick Inline Add Task Bar
-            self._build_quick_add_task_bar(panel)
-
-            if not priorities:
-                tk.Label(
-                    panel,
-                    text="No tasks due or scheduled for today.",
-                    bg=p["surface"],
-                    fg=p["text_muted"],
-                    font=("Segoe UI", 10),
-                    pady=24,
-                ).pack()
-            else:
-                for t in priorities:
-                    self._build_clean_task_row(panel, t)
-
-        else:  # 'milestones'
-            tk.Label(
-                panel,
-                text="UPCOMING MILESTONES",
-                bg=p["surface"],
-                fg=p["accent"],
-                font=("Segoe UI", 9, "bold"),
-                anchor="w",
-            ).pack(fill="x", pady=(0, 8))
-
-            ms = self.controller.analytics_service.get_upcoming_milestones(limit=4)
-            if not ms:
-                tk.Label(
-                    panel,
-                    text="No upcoming active milestones.",
-                    bg=p["surface"],
-                    fg=p["text_muted"],
-                    font=("Segoe UI", 9),
-                    pady=6,
-                ).pack(anchor="w")
-            else:
-                for item in ms:
-                    m = item["milestone"]
-                    g = item["goal"]
-                    stats = item["progress"]
-                    dl_text, dl_state = format_relative_deadline(m.deadline)
-
-                    m_box = tk.Frame(panel, bg=p["surface_alt"], padx=14, pady=10)
-                    m_box.pack(fill="x", pady=(0, 8))
-
-                    r1 = tk.Frame(m_box, bg=p["surface_alt"])
-                    r1.pack(fill="x")
-                    tk.Label(
-                        r1,
-                        text=m.title,
-                        bg=p["surface_alt"],
-                        fg=p["text"],
-                        font=("Segoe UI", 10, "bold"),
-                    ).pack(side="left")
-                    tk.Label(
-                        r1,
-                        text=dl_text,
-                        bg=p["surface_alt"],
-                        fg=p.get(dl_state, p["text_muted"]),
-                        font=("Segoe UI", 8, "bold"),
-                    ).pack(side="right")
-
-                    tk.Label(
-                        m_box,
-                        text=f"{g.title}  •  {stats.status_label}",
-                        bg=p["surface_alt"],
-                        fg=p["text_muted"],
-                        font=("Segoe UI", 8),
-                        anchor="w",
-                    ).pack(fill="x", pady=(2, 6))
-
-                    SmoothProgressBar(
-                        m_box,
-                        percentage=stats.percentage,
-                        height=5,
-                        bg_color=p["surface_alt"],
-                        track_color=p["track"],
-                        fill_color=g.color or p["accent"],
-                    ).pack(fill="x")
-
-            tk.Label(
-                panel,
-                text="RECENT ACTIVITY",
-                bg=p["surface"],
-                fg=p["accent"],
-                font=("Segoe UI", 9, "bold"),
-                anchor="w",
-            ).pack(fill="x", pady=(14, 8))
-
-            for ev in self.controller.activity_repo.list_recent(limit=5):
-                erow = tk.Frame(panel, bg=p["surface"], pady=3)
-                erow.pack(fill="x")
-                tk.Label(
-                    erow,
-                    text=f"•  {ev.description}",
-                    bg=p["surface"],
-                    fg=p["text_muted"],
-                    font=("Segoe UI", 9),
-                    anchor="w",
-                ).pack(side="left")
-                tk.Label(
-                    erow,
-                    text=ev.created_at[:10],
-                    bg=p["surface"],
-                    fg=p["text_dim"],
-                    font=("Segoe UI", 8),
-                ).pack(side="right")
-
-    def _build_quick_add_task_bar(self, parent: tk.Widget) -> None:
-        p = self.controller.colors
-        projects = self.controller.goal_service.list_all_projects_with_context()
-        if not projects:
-            return
-
-        bar = tk.Frame(parent, bg=p["surface_alt"], padx=10, pady=8)
-        bar.pack(fill="x", pady=(0, 14))
-
-        ent = tk.Entry(
-            bar,
-            bg=p["input_bg"],
-            fg=p["text"],
-            insertbackground=p["text"],
-            highlightbackground=p["border"],
-            highlightthickness=1,
-            relief="flat",
+        tk.Label(
+            panel,
+            text="Recommended tasks to work on right now based on urgency, priority, and readiness:",
+            bg=p["surface"],
+            fg=p["text_muted"],
             font=("Segoe UI", 9),
-        )
-        ent.pack(side="left", fill="x", expand=True, ipady=4, padx=(0, 8))
-        ent.insert(0, "")
+            anchor="w",
+        ).pack(fill="x", pady=(0, 14))
 
-        def _quick_create(_e=None) -> None:
-            title = ent.get().strip()
-            if not title:
-                return
-            pid = projects[0][0]
-            self.controller.task_service.create_task(
-                project_id=pid,
-                title=title,
-                due_date=today_iso(),
-                scheduled_date=today_iso(),
-            )
-            self.controller.show_toast(f"Added '{title}' for today!", "positive")
-            self.controller.notify_data_changed("quick_task_added")
-
-        ent.bind("<Return>", _quick_create)
-
-        tk.Button(
-            bar,
-            text="+ Add for Today",
-            bg=p["accent"],
-            fg="#FFFFFF",
-            font=("Segoe UI", 8, "bold"),
-            relief="flat",
-            padx=10,
-            pady=4,
-            cursor="hand2",
-            command=_quick_create,
-        ).pack(side="right")
+        if not recs:
+            tk.Label(
+                panel,
+                text="🎉 You're all caught up! No urgent tasks need immediate attention.",
+                bg=p["surface"],
+                fg=p["text"],
+                font=("Segoe UI", 11),
+                pady=24,
+            ).pack()
+        else:
+            for rec in recs:
+                self._build_clean_rec_row(panel, rec)
 
     def _build_clean_rec_row(
         self, parent: tk.Widget, rec: Recommendation
@@ -460,64 +276,6 @@ class DashboardPage(tk.Frame):
             font=("Segoe UI", 9),
             anchor="w",
         ).pack(fill="x")
-
-    def _build_clean_task_row(self, parent: tk.Widget, t: Task) -> None:
-        p = self.controller.colors
-        is_comp = t.status == "completed"
-        row = tk.Frame(parent, bg=p["surface_alt"], padx=12, pady=10)
-        row.pack(fill="x", pady=(0, 6))
-
-        chk = tk.Button(
-            row,
-            text="☑" if is_comp else "☐",
-            bg=p["surface_alt"],
-            fg=p["positive"] if is_comp else p["text_muted"],
-            font=("Segoe UI", 12, "bold"),
-            relief="flat",
-            bd=0,
-            cursor="hand2",
-            command=lambda tid=t.id: self.controller.toggle_task_completion(tid),
-        )
-        chk.pack(side="left", padx=(0, 10))
-
-        info = tk.Frame(row, bg=p["surface_alt"])
-        info.pack(side="left", fill="x", expand=True)
-
-        tk.Label(
-            info,
-            text=t.title,
-            bg=p["surface_alt"],
-            fg=p["text_muted"] if is_comp else p["text"],
-            font=("Segoe UI", 10, "overstrike" if is_comp else "bold"),
-            anchor="w",
-        ).pack(fill="x")
-
-        dl_lbl, dl_state = format_relative_deadline(t.due_date, is_completed=is_comp)
-        tk.Label(
-            info,
-            text=f"{t.goal_title}   •   {dl_lbl}",
-            bg=p["surface_alt"],
-            fg=p.get(dl_state, p["text_muted"])
-            if dl_state == "danger"
-            else p["text_muted"],
-            font=("Segoe UI", 8),
-            anchor="w",
-        ).pack(fill="x")
-
-        tk.Button(
-            row,
-            text="Edit",
-            bg=p["surface"],
-            fg=p["text_muted"],
-            font=("Segoe UI", 8),
-            relief="flat",
-            padx=8,
-            pady=2,
-            cursor="hand2",
-            command=lambda task_obj=t: TaskFormDialog(
-                self, self.controller, task=task_obj
-            ),
-        ).pack(side="right")
 
     def _build_active_goals_column(self, parent: tk.Widget) -> None:
         p = self.controller.colors
@@ -587,5 +345,6 @@ class DashboardPage(tk.Frame):
                     progress=g_stats,
                     colors=p,
                     on_open_detail=self.controller.open_goal_detail,
+                    show_percentage=False,
                 )
                 gc.pack(fill="x", pady=(0, 12))

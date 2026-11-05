@@ -20,15 +20,11 @@ def run_app(
     app = MainWindow(controller)
 
     if smoke_test:
-        # Programmatically exercise every navigation page and theme switch
+        # Programmatically exercise every navigation page
         def _run_smoke() -> None:
             for page_key in PAGE_CLASSES:
                 controller.navigate(page_key)
                 app.update_idletasks()
-            controller.switch_theme("light")
-            app.update_idletasks()
-            controller.switch_theme("dark")
-            app.update_idletasks()
             controller.navigate("dashboard")
             app.update_idletasks()
             app.destroy()

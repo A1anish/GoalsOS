@@ -4,7 +4,6 @@ import tkinter as tk
 from typing import Dict, List, Tuple
 
 from ui.app_controller import AppController
-from ui.components.canvas_widgets import SmoothProgressBar
 
 
 NAV_ITEMS: List[Tuple[str, str, str]] = [
@@ -12,14 +11,14 @@ NAV_ITEMS: List[Tuple[str, str, str]] = [
     ("goals", "◎", "My Goals"),
     ("goal_explorer", "❖", "Goal Explorer"),
     ("task_planner", "☑", "Task Planner"),
-    ("timeline", "◷", "Timeline & Gantt"),
+    ("timeline", "◷", "Timeline"),
     ("analytics", "▤", "Analytics"),
     ("weekly_review", "✦", "Weekly Review"),
 ]
 
 
 class Sidebar(tk.Frame):
-    """Persistent left sidebar with navigation links and live overall progress indicator."""
+    """Persistent left sidebar with navigation links."""
 
     def __init__(self, parent: tk.Widget, controller: AppController) -> None:
         self.controller = controller
@@ -92,63 +91,6 @@ class Sidebar(tk.Frame):
 
         for key, icon, label in NAV_ITEMS:
             self._create_nav_item(nav_container, key, icon, label)
-
-        # Bottom Section (Overall Progress Card + Settings)
-        bottom = tk.Frame(self, bg=p["sidebar_bg"])
-        bottom.pack(side="bottom", fill="x", pady=14)
-
-        tk.Frame(bottom, bg="#1E293B", height=1).pack(
-            fill="x", padx=16, pady=(0, 10)
-        )
-        self._create_nav_item(bottom, "settings", "⚙", "Settings & Data")
-
-        # Live Overall Progress Mini-Card
-        overall = self.controller.progress_service.get_all_active_goals_progress()
-        mini_card = tk.Frame(
-            bottom,
-            bg="#131C31",
-            highlightbackground="#1E293B",
-            highlightthickness=1,
-            padx=14,
-            pady=12,
-        )
-        mini_card.pack(fill="x", padx=14, pady=(12, 4))
-
-        top_r = tk.Frame(mini_card, bg="#131C31")
-        top_r.pack(fill="x")
-        tk.Label(
-            top_r,
-            text="ACTIVE PROGRESS",
-            bg="#131C31",
-            fg="#94A3B8",
-            font=("Segoe UI", 8, "bold"),
-        ).pack(side="left")
-        tk.Label(
-            top_r,
-            text=f"{overall.percentage:.0f}%",
-            bg="#131C31",
-            fg=p["accent"],
-            font=("Segoe UI", 9, "bold"),
-        ).pack(side="right")
-
-        bar = SmoothProgressBar(
-            mini_card,
-            percentage=overall.percentage,
-            height=6,
-            bg_color="#131C31",
-            track_color="#1E293B",
-            fill_color=p["accent"],
-        )
-        bar.pack(fill="x", pady=(6, 4))
-
-        tk.Label(
-            mini_card,
-            text=overall.status_label,
-            bg="#131C31",
-            fg="#64748B",
-            font=("Segoe UI", 8),
-            anchor="w",
-        ).pack(fill="x")
 
         self.set_active(self.controller.current_page)
 

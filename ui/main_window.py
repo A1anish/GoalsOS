@@ -12,7 +12,6 @@ from ui.pages import (
     GoalDetailPage,
     GoalExplorerPage,
     GoalsPage,
-    SettingsPage,
     TaskPlannerPage,
     TimelinePage,
     WeeklyReviewPage,
@@ -28,7 +27,6 @@ PAGE_CLASSES: Dict[str, Type[tk.Frame]] = {
     "timeline": TimelinePage,
     "analytics": AnalyticsPage,
     "weekly_review": WeeklyReviewPage,
-    "settings": SettingsPage,
 }
 
 PAGE_TITLES: Dict[str, str] = {
@@ -37,10 +35,9 @@ PAGE_TITLES: Dict[str, str] = {
     "goal_detail": "My Goals  ›  Goal Execution Workspace",
     "goal_explorer": "Goal Explorer  ›  Hierarchical Tree & Node Canvas",
     "task_planner": "Task Planner  ›  Unified Action Queue",
-    "timeline": "Timeline  ›  Deadlines & Graphical Gantt",
-    "analytics": "Analytics  ›  Completion History & Performance",
+    "timeline": "Timeline  ›  Next 7 Days",
+    "analytics": "Analytics  ›  Completion History & Categories",
     "weekly_review": "Weekly Review  ›  Reflect & Plan",
-    "settings": "Settings  ›  Appearance & Database Management",
 }
 
 
@@ -135,22 +132,6 @@ class MainWindow(tk.Tk):
         self.search_entry.pack(side="left", ipady=4, padx=(0, 14))
         self.search_entry.bind("<Return>", self._on_global_search)
 
-        # Quick Theme Switcher button
-        theme_icon = "☀" if self.controller.theme.mode == "dark" else "🌙"
-        self.theme_btn = tk.Button(
-            top_actions,
-            text=theme_icon,
-            bg=p["surface_alt"],
-            fg=p["text"],
-            font=("Segoe UI", 10),
-            relief="flat",
-            padx=10,
-            pady=3,
-            cursor="hand2",
-            command=self._toggle_theme_quick,
-        )
-        self.theme_btn.pack(side="left", padx=(0, 8))
-
         tk.Button(
             top_actions,
             text="+ Task",
@@ -190,14 +171,7 @@ class MainWindow(tk.Tk):
             self._active_page_widget.search_var.set(q)
             self._active_page_widget.render()
 
-    def _toggle_theme_quick(self) -> None:
-        next_mode = (
-            "light" if self.controller.theme.mode == "dark" else "dark"
-        )
-        self.controller.switch_theme(next_mode)
-
     def _on_navigate(self, page_key: str) -> None:
-        p = self.controller.colors
         self.sidebar.set_active(page_key)
         self.breadcrumb_lbl.configure(
             text=PAGE_TITLES.get(page_key, "GoalOS")

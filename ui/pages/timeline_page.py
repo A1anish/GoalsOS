@@ -1,30 +1,24 @@
-"""Clean Chronological Agenda and Graphical Gantt view page for GoalOS."""
+"""Clean 7-Day Timeline list page for GoalOS."""
 
 import tkinter as tk
 from typing import Dict, List
 
 from ui.app_controller import AppController
-from ui.components.canvas_widgets import GanttTimelineCanvas
 from ui.components.dialogs import RescheduleDialog
 from ui.components.scrollable import ScrollableFrame
 from utils.dates import format_relative_deadline
 
 
 class TimelinePage(tk.Frame):
-    """Displays either a clean Chronological Agenda or a full-width Graphical Gantt Chart."""
+    """Displays the chronological 7-Day Schedule list."""
 
     def __init__(self, parent: tk.Widget, controller: AppController) -> None:
         self.controller = controller
         p = controller.colors
         super().__init__(parent, bg=p["bg"])
 
-        self.view_mode = tk.StringVar(value="list")  # 'list' or 'gantt'
         self.scroll = ScrollableFrame(self, bg=p["bg"])
         self.scroll.pack(fill="both", expand=True)
-        self.render()
-
-    def _set_mode(self, mode: str) -> None:
-        self.view_mode.set(mode)
         self.render()
 
     def render(self) -> None:
@@ -42,84 +36,22 @@ class TimelinePage(tk.Frame):
 
         tk.Label(
             header,
-            text="Timeline & Deadlines",
+            text="Timeline (Next 7 Days)",
             bg=p["bg"],
             fg=p["text"],
             font=("Segoe UI", 18, "bold"),
             anchor="w",
         ).pack(side="left")
 
-        mode_bar = tk.Frame(header, bg=p["surface"], padx=4, pady=4)
-        mode_bar.pack(side="right")
-
-        cur_mode = self.view_mode.get()
-        for key, lbl in [
-            ("list", "☰ Chronological Agenda"),
-            ("gantt", "◷ Graphical Gantt Chart"),
-        ]:
-            is_sel = cur_mode == key
-            tk.Button(
-                mode_bar,
-                text=lbl,
-                bg=p["accent"] if is_sel else p["surface_alt"],
-                fg="#FFFFFF" if is_sel else p["text_muted"],
-                font=("Segoe UI", 9, "bold" if is_sel else "normal"),
-                relief="flat",
-                padx=14,
-                pady=5,
-                cursor="hand2",
-                command=lambda k=key: self._set_mode(k),
-            ).pack(side="left", padx=2)
-
-        if cur_mode == "gantt":
-            gantt_card = tk.Frame(
-                container,
-                bg=p["surface"],
-                highlightbackground=p["border"],
-                highlightthickness=1,
-                padx=20,
-                pady=18,
-            )
-            gantt_card.pack(fill="both", expand=True, padx=32, pady=(0, 28))
-
-            tk.Label(
-                gantt_card,
-                text="35-DAY SCHEDULE HORIZON (MILESTONES & TASKS)",
-                bg=p["surface"],
-                fg=p["accent"],
-                font=("Segoe UI", 9, "bold"),
-                anchor="w",
-            ).pack(fill="x", pady=(0, 12))
-
-            gantt_rows = self._collect_gantt_rows()
-            gantt_h = max(360, min(600, 70 + len(gantt_rows) * 36))
-            gantt = GanttTimelineCanvas(
-                gantt_card, colors=p, height=gantt_h
-            )
-            gantt.pack(fill="both", expand=True)
-            gantt.set_items(gantt_rows)
-            return
-
-        # Chronological Agenda View
+        # 7-Day Chronological List View (Today & Next 7 Days)
         buckets = self.controller.analytics_service.get_timeline_buckets()
-        bucket_defs = [
-            ("overdue", "Overdue", p["danger"]),
-            ("today", "Due Today", p["warning"]),
-            ("next_7_days", "Next 7 Days", p["info"]),
-            ("later", "Later", p["accent"]),
-            ("unscheduled", "Unscheduled", p["text_muted"]),
-        ]
+        seven_day_items = buckets.get("today", []) + buckets.get("next_7_days", [])
 
-        any_rendered = False
-        for b_key, b_title, b_color in bucket_defs:
-            items = buckets.get(b_key, [])
-            if items:
-                any_rendered = True
-                self._build_bucket_section(
-                    container, b_title, items, b_color
-                )
-
-        if not any_rendered:
+        if seven_day_items:
+            self._build_bucket_section(
+                container, "Next 7 Days", seven_day_items, p["accent"]
+            )
+        else:
             empty = tk.Frame(
                 container,
                 bg=p["surface"],
@@ -131,46 +63,11 @@ class TimelinePage(tk.Frame):
             empty.pack(fill="x", padx=32)
             tk.Label(
                 empty,
-                text="No upcoming milestones or tasks on your timeline.",
+                text="No tasks or milestones scheduled in the next 7 days.",
                 bg=p["surface"],
                 fg=p["text"],
                 font=("Segoe UI", 11, "bold"),
             ).pack()
-
-    def _collect_gantt_rows(self) -> List[Dict]:
-        rows: List[Dict] = []
-        active_goals = {
-            g.id: g
-            for g in self.controller.goal_repo.list_all(status="active")
-        }
-        for m in self.controller.milestone_repo.list_all():
-            g = active_goals.get(m.goal_id)
-            if not g or m.status == "archived":
-                continue
-            if m.start_date or m.deadline:
-                rows.append(
-                    {
-                        "type": "Milestone",
-                        "title": f"{m.title} ({g.title[:16]})",
-                        "start_date": m.start_date,
-                        "end_date": m.deadline,
-                        "color": g.color or self.controller.colors["accent"],
-                    }
-                )
-        for t in self.controller.task_repo.list_all(include_archived_goals=False):
-            if t.goal_status != "active" or t.status in ("completed", "cancelled"):
-                continue
-            if t.scheduled_date or t.due_date:
-                rows.append(
-                    {
-                        "type": "Task",
-                        "title": t.title,
-                        "start_date": t.scheduled_date or t.due_date,
-                        "end_date": t.due_date or t.scheduled_date,
-                        "color": t.goal_color or self.controller.colors["info"],
-                    }
-                )
-        return rows[:18]
 
     def _build_bucket_section(
         self,

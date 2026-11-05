@@ -95,10 +95,9 @@ class AppController:
         if seed_if_empty:
             self.backup_service.seed_sample_data_if_empty(force=False)
 
-        # Theme & UI State
-        saved_theme = self.settings_repo.get("theme", "dark")
+        # Theme & UI State (Dark Mode)
         saved_accent = self.settings_repo.get("accent_color", "#6366F1")
-        self.theme = ThemeManager(mode=saved_theme, accent=saved_accent)
+        self.theme = ThemeManager(mode="dark", accent=saved_accent)
 
         self.current_page: str = "dashboard"
         self.selected_goal_id: Optional[str] = None
